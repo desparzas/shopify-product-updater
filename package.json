@@ -1,0 +1,27 @@
+{
+  "name": "shopify-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "cross-env NODE_ENV=production node index.js",
+    "dev": "cross-env NODE_ENV=development nodemon index.js",
+    "test": "cross-env NODE_ENV=test jest --verbose --runInBand",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.2",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "cross-env": "^7.0.3",
+    "express": "^4.19.2",
+    "express-async-errors": "^3.1.1"
+  },
+  "devDependencies": {
+    "eslint": "^9.6.0"
+  }
+}
