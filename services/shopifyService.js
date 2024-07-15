@@ -71,13 +71,11 @@ async function getProductosFromRamo(ramo) {
       );
       if (producto && cantidad) {
         producto.value = producto.value.replace(/[^0-9]/g, "");
-        let p = await getProductById(producto.value);
-        if (!p) {
-          console.error(
-            "Producto no encontrado en la base de datos desde el ramo"
-          );
+        if (!producto.value) {
+          console.error("El metafield no tiene un valor de producto");
           continue;
         }
+        let p = await getProductById(producto.value);
         p = {
           id: p.id,
           title: p.title,
