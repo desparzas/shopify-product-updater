@@ -58,7 +58,7 @@ async function getProductosFromRamo(ramo) {
   try {
     const metafields = await getProductMetafields(ramo.id);
     if (!metafields) {
-      // console.error("No se encontraron metafields para el ramo");
+      console.error("No se encontraron metafields para el ramo ", ramo.id);
       return [];
     }
     const data_productos = [];
@@ -69,6 +69,7 @@ async function getProductosFromRamo(ramo) {
       const cantidad = metafields.find(
         (metafield) => metafield.key === `cantidad_del_producto_${i}`
       );
+      console.log("Producto: ", producto, " Cantidad: ", cantidad);
       if (producto && cantidad) {
         if (!producto.value) {
           console.error("El metafield no tiene un valor de producto");
@@ -79,6 +80,7 @@ async function getProductosFromRamo(ramo) {
           continue;
         }
         producto.value = producto.value.replace(/[^0-9]/g, "");
+
         let p = await getProductById(producto.value);
         p = {
           id: p.id,
@@ -99,7 +101,7 @@ async function getProductosFromRamo(ramo) {
   }
 }
 
-async function getRamosByProduct(productId) {
+async function obtenerRamosContienenProducto(productId) {
   try {
     let ramos = await getProductByProductType("Ramo");
     for (let product of ramos) {
@@ -126,8 +128,9 @@ async function updateRamosSimples(productId) {
       );
       return [];
     }
+    console.log("Producto encontrado: ", product.title);
     const precioNuevo = parseFloat(product.variants[0].price);
-    const ramos = await getRamosByProduct(productId);
+    const ramos = await obtenerRamosContienenProducto(productId);
 
     const ramosSimples = ramos.filter((ramo) => {
       const tieneSoloUnVariant = ramo.productos.every(
@@ -193,6 +196,6 @@ module.exports = {
   getProductMetafields,
   getProductByProductType,
   getProductosFromRamo,
-  getRamosByProduct,
+  obtenerRamosContienenProducto,
   updateRamosSimples,
 };
