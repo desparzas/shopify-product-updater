@@ -6,6 +6,7 @@ const SHOPIFY_API_KEY = process.env.SHOPIFY_API_KEY;
 const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET;
 const SCOPES = process.env.SCOPES;
 const PORT = process.env.PORT;
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 module.exports = {
   ACCESS_TOKEN,
   SHOP,
@@ -13,4 +14,5 @@ module.exports = {
   SHOPIFY_API_SECRET,
   SCOPES,
   PORT,
+  WEBHOOK_SECRET,
 };

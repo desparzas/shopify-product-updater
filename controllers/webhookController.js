@@ -6,12 +6,15 @@ const shopifyService = require("../services/shopifyService"); // Asegúrate de a
 function verifyHMAC(req, res, next) {
   const hmac = req.headers["x-shopify-hmac-sha256"];
   const hash = crypto
-    .createHmac("sha256", config.SHOPIFY_API_SECRET)
+    .createHmac("sha256", config.WEBHOOK_SECRET)
     .update(req.body, "utf8", "hex")
     .digest("base64");
 
   if (hash !== hmac) {
+    console.log("HMAC no coincide");
     return res.status(401).send("Unauthorized");
+  } else {
+    console.log("HMAC coincide");
   }
 
   next();
