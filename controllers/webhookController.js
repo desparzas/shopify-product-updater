@@ -24,9 +24,9 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    console.log("________________________________________");
-    console.log("Producto actualizado:", productData);
-    console.log("________________________________________");
+    console.log("____________________________________");
+    console.log("Producto actualizado:", productData.id);
+    console.log("____________________________________");
 
     // Actualizar ramos o realizar otras acciones necesarias
     await shopifyService.updateRamosSimples(productData.id);

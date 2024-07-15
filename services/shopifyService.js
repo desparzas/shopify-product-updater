@@ -139,10 +139,11 @@ async function updateRamosSimples(productId) {
       console.log("Precio del ramo nuevo: ", precioRamoNuevo);
 
       try {
-        await shopify.productVariant.update(ramo.variants[0].id, {
-          price: precioRamoNuevo,
-        });
-        ramo.precioRamoNuevo = precioRamoNuevo;
+        if (precioRamoNuevo !== ramo.variants[0].price) {
+          await shopify.productVariant.update(ramo.variants[0].id, {
+            price: precioRamoNuevo,
+          });
+        }
       } catch (updateError) {
         console.error(
           `Error updating variant ${ramo.variants[0].id}:`,
