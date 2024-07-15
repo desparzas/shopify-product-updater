@@ -22,7 +22,7 @@ async function listProducts() {
     return products;
   } catch (error) {
     console.error("Error fetching products:", error);
-    throw error;
+    return [];
   }
 }
 
@@ -44,18 +44,17 @@ async function getProductMetafields(productId) {
     return metafields;
   } catch (error) {
     console.error("Error fetching product metafields");
-    throw error;
+    return [];
   }
 }
 
 async function getProductByProductType(productType) {
   try {
     const products = await shopify.product.list({ product_type: productType });
-
     return products;
   } catch (error) {
     console.error("Error fetching products by type");
-    throw error;
+    return [];
   }
 }
 
@@ -73,6 +72,10 @@ async function getProductosFromRamo(ramo) {
       if (producto && cantidad) {
         producto.value = producto.value.replace(/[^0-9]/g, "");
         let p = await getProductById(producto.value);
+        if (!p) {
+          console.error("Producto no encontrado en la base de datos");
+          continue;
+        }
         p = {
           id: p.id,
           title: p.title,
@@ -88,7 +91,7 @@ async function getProductosFromRamo(ramo) {
     return data_productos;
   } catch (error) {
     console.error("Error obteniendo los productos de un ramo");
-    throw error;
+    return [];
   }
 }
 

@@ -24,8 +24,9 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    if (!productData.id) {
-      console.error("No se ha recibido el ID del producto");
+    // si es nulo, no es un producto
+    if (!productData) {
+      console.error("No es un producto");
       return res.status(400).send("Bad Request");
     }
     console.log("____________________________________");
