@@ -69,12 +69,8 @@ async function getProductosFromRamo(ramo) {
       const cantidad = metafields.find(
         (metafield) => metafield.key === `cantidad_del_producto_${i}`
       );
-      if (producto && cantidad) {
+      if (producto.value && cantidad.value) {
         producto.value = producto.value.replace(/[^0-9]/g, "");
-        if (!producto.value) {
-          console.error("El metafield no tiene un valor de producto");
-          continue;
-        }
         let p = await getProductById(producto.value);
         p = {
           id: p.id,
