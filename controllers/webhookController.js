@@ -29,14 +29,15 @@ async function handleProductUpdate(req, res) {
       console.error("No es un producto");
       return res.status(400).send("Bad Request");
     }
-    console.log("____________________________________");
+
     console.log("Producto actualizado:", productData.id);
-    console.log("____________________________________");
 
     // Buscar el producto actualizado en la base de datos
     const product = await shopifyService.getProductById(productData.id);
     if (!product) {
-      console.error("Producto no encontrado en la base de datos");
+      console.error(
+        "Producto no encontrado en la base de datos desde el handler"
+      );
       return res.status(404).send("Not Found");
     }
 

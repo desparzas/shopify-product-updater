@@ -73,7 +73,9 @@ async function getProductosFromRamo(ramo) {
         producto.value = producto.value.replace(/[^0-9]/g, "");
         let p = await getProductById(producto.value);
         if (!p) {
-          console.error("Producto no encontrado en la base de datos");
+          console.error(
+            "Producto no encontrado en la base de datos desde el ramo"
+          );
           continue;
         }
         p = {
@@ -114,9 +116,12 @@ async function getRamosByProduct(productId) {
 
 async function updateRamosSimples(productId) {
   try {
+    console.log("ID del producto recibido: ", productId);
     const product = await getProductById(productId);
     if (!product) {
-      console.error("Producto no encontrado en la base de datos");
+      console.error(
+        "Producto no encontrado en la base de datos desde la función updateRamosSimples"
+      );
       return [];
     }
     const precioNuevo = parseFloat(product.variants[0].price);
