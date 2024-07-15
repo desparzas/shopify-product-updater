@@ -140,15 +140,25 @@ async function updateRamosSimples(productId) {
 
       try {
         if (precioRamoNuevo !== ramo.variants[0].price) {
-          await shopify.productVariant.update(ramo.variants[0].id, {
-            price: precioRamoNuevo,
-          });
+          console.log(
+            `Updating variant ${ramo.variants[0].price} to price ${precioRamoNuevo}`
+          );
+          const now = new Date();
+          const productName = ramo.title;
+          const variant = ramo.variants[0];
+          const updatedAt = new Date(variant.updated_at);
+          // Verificar si el variant ha sido actualizado en los últimos 60 segundos
+          if (now - updatedAt > 60 * 1000) {
+            console.log(
+              `Actualizando el precio del ramo ${productName} de ${variant.price} a ${precioRamoNuevo}`
+            );
+            await shopify.productVariant.update(ramo.variants[0].id, {
+              price: precioRamoNuevo,
+            });
+          }
         }
       } catch (updateError) {
-        console.error(
-          `Error updating variant ${ramo.variants[0].id}:`,
-          updateError
-        );
+        console.error(`Error updating variant ${ramo.variants[0].id}:`);
       }
     });
 
