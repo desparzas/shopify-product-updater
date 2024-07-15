@@ -7,6 +7,7 @@ const {
 
 const getProducts = async (req, res) => {
   try {
+    console.log("Fetching products...");
     const products = await listProducts();
     res.json({
       data: products,
@@ -18,6 +19,7 @@ const getProducts = async (req, res) => {
 
 const getProduct = async (req, res) => {
   try {
+    console.log("Fetching product...");
     const { id } = req.params;
     const product = await getProductById(id);
     if (!product) {
