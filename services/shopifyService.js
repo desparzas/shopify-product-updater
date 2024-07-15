@@ -21,7 +21,6 @@ async function listProducts() {
     }
     return products;
   } catch (error) {
-    console.error("Error fetching products:", error);
     return [];
   }
 }
@@ -31,7 +30,6 @@ async function getProductById(id) {
     const product = await shopify.product.get(id);
     return product;
   } catch (error) {
-    console.error("Error fetching product...");
     return null;
   }
 }
@@ -43,7 +41,6 @@ async function getProductMetafields(productId) {
     });
     return metafields;
   } catch (error) {
-    console.error("Error fetching product metafields");
     return [];
   }
 }
@@ -53,7 +50,6 @@ async function getProductByProductType(productType) {
     const products = await shopify.product.list({ product_type: productType });
     return products;
   } catch (error) {
-    console.error("Error fetching products by type");
     return [];
   }
 }
@@ -61,6 +57,10 @@ async function getProductByProductType(productType) {
 async function getProductosFromRamo(ramo) {
   try {
     const metafields = await getProductMetafields(ramo.id);
+    if (!metafields) {
+      // console.error("No se encontraron metafields para el ramo");
+      return [];
+    }
     const data_productos = [];
     for (let i = 1; i <= 20; i++) {
       let producto = metafields.find(
@@ -90,7 +90,7 @@ async function getProductosFromRamo(ramo) {
     }
     return data_productos;
   } catch (error) {
-    console.error("Error obteniendo los productos de un ramo");
+    console.log("Error obteniendo los productos de un ramo");
     return [];
   }
 }
@@ -108,7 +108,7 @@ async function getRamosByProduct(productId) {
     return ramos;
   } catch (error) {
     console.error("Error fetching products:", error);
-    throw error;
+    return [];
   }
 }
 
