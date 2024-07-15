@@ -28,12 +28,19 @@ async function handleProductUpdate(req, res) {
     console.log("Producto actualizado:", productData.id);
     console.log("____________________________________");
 
+    // Buscar el producto actualizado en la base de datos
+    const product = await shopifyService.getProductById(productData.id);
+    if (!product) {
+      console.error("Producto no encontrado en la base de datos");
+      return res.status(404).send("Not Found");
+    }
+
     // Actualizar ramos o realizar otras acciones necesarias
     await shopifyService.updateRamosSimples(productData.id);
 
     res.status(200).send("Webhook recibido");
   } catch (error) {
-    console.error("Error handling product update webhook:", error);
+    console.error("Error handling product update webhook:");
     res.status(500).send("Internal Server Error");
   }
 }
