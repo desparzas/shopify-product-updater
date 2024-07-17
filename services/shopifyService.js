@@ -14,8 +14,7 @@ async function retryWithBackoff(fn, retries = 5, delay = 1000) {
   try {
     return await fn();
   } catch (error) {
-    console.log("Status code:", error.statusCode);
-    if (error.statusCode === 429 && retries > 0) {
+    if (error.response.statusCode === 429 && retries > 0) {
       console.log(`Rate limit hit, retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       return retryWithBackoff(fn, retries - 1, delay * 2);
