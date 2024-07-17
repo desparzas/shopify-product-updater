@@ -14,6 +14,7 @@ async function retryWithBackoff(fn, retries = 5, delay = 1000) {
   try {
     return await fn();
   } catch (error) {
+    console.log("Status code:", error.statusCode);
     if (error.statusCode === 429 && retries > 0) {
       console.log(`Rate limit hit, retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -92,7 +93,7 @@ async function getProductosFromRamo(ramo) {
     }
     return data_productos;
   } catch (error) {
-    console.error("Error obteniendo los productos de un ramo:", error);
+    console.error("Error obteniendo los productos de un ramo");
     return [];
   }
 }
@@ -117,7 +118,7 @@ async function actualizarRamosSimplesDeProducto(productId) {
     const id = parseInt(productId, 10);
     const product = await getProductById(id);
     if (!product) {
-      console.error(
+      console.log(
         "Producto no encontrado en la base de datos desde la función updateRamosSimples"
       );
       return [];
@@ -158,7 +159,7 @@ async function actualizarRamosSimplesDeProducto(productId) {
     await Promise.all(updatePromises);
     return ramosSimples;
   } catch (error) {
-    console.error("Error actualizando ramos simples:", error);
+    console.log("Error actualizando ramos simples");
     throw error;
   }
 }
