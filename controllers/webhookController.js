@@ -2,7 +2,7 @@ const config = require("../utils/config");
 const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
 
-// const processedEvents = new Set(); // Para almacenar eventos procesados
+const processedEvents = new Set(); // Para almacenar eventos procesados
 
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
@@ -33,6 +33,9 @@ async function handleProductUpdate(req, res) {
       }
     }
 
+    console.log("Procesando webhook para el producto ", productData.title);
+    console.log("Evento: ", topic);
+    console.log("Eventos procesados: ", processedEvents.values());
     processedEvents.add(eventId);
 
     const contenidoEnRamo = await shopifyService.contenidoEnRamo(
