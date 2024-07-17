@@ -120,7 +120,6 @@ async function actualizarRamosSimplesDeProducto(productId) {
       console.log(
         "Producto no encontrado en la base de datos desde la función updateRamosSimples"
       );
-      return [];
     }
     const precioNuevo = parseFloat(product.variants[0].price);
     const ramos = await obtenerRamosContienenProducto(id);
@@ -147,17 +146,15 @@ async function actualizarRamosSimplesDeProducto(productId) {
         console.log(
           `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo} de ${ramo.variants[0].price} a ${precioRamoNuevo}`
         );
-        await shopify.productVariant.update(ramo.variants[0].id, {
+        shopify.productVariant.update(ramo.variants[0].id, {
           price: precioRamoNuevo,
         });
       }
     }
 
     console.log("Ramos simples actualizados del producto ", product.title);
-    return ramosSimples;
   } catch (error) {
     console.log("Error actualizando ramos simples");
-    throw error;
   }
 }
 
