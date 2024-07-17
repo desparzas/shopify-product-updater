@@ -23,18 +23,17 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    // const topic = req.headers["x-shopify-topic"]; // Captura el encabezado de evento
-    // const eventId = `${topic}-${productData.id}-${Date.now()}`; // Crear un identificador único
+    const topic = req.headers["x-shopify-topic"]; // Captura el encabezado de evento
+    const eventId = `${topic}-${productData.id}-${Date.now()}`; // Crear un identificador único
 
-    // // Verificar si el evento ya fue procesado
-    // if (processedEvents.has(eventId)) {
-    //   // si fue procesado hace menos de 1 minutos, se ignora
-    //   if (Date.now() - parseInt(eventId.split("-")[2], 10) < 60000) {
-    //     return res.status(200).send("Webhook ya procesado");
-    //   }
-    // }
+    // Verificar si el evento ya fue procesado
+    if (processedEvents.has(eventId)) {
+      if (Date.now() - processedEvents.get(eventId) < 60000) {
+        return res.status(200).send("Webhook ya procesado");
+      }
+    }
 
-    // processedEvents.add(eventId);
+    processedEvents.add(eventId);
 
     const contenidoEnRamo = await shopifyService.contenidoEnRamo(
       productData.id
@@ -43,7 +42,10 @@ async function handleProductUpdate(req, res) {
     if (contenidoEnRamo) {
       console.log(`El producto ${productData.title} está contenido en un ramo`);
       await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
-      console.log("Ramos simples actualizados");
+      console.log(
+        "Ramos simples actualizados del producto ",
+        productData.title
+      );
     } else {
       console.log(
         `El producto ${productData.title} no está contenido en un ramo`

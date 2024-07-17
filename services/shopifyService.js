@@ -156,6 +156,7 @@ async function actualizarRamosSimplesDeProducto(productId) {
     });
 
     await Promise.all(updatePromises);
+    console.log("Ramos simples actualizados del producto ", product.title);
     return ramosSimples;
   } catch (error) {
     console.log("Error actualizando ramos simples");
