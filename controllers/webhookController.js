@@ -28,7 +28,6 @@ async function handleProductUpdate(req, res) {
     console.log("_________________");
     console.log(productData);
     console.log("_________________");
-    // si es nulo, no es un producto
     if (!productData) {
       console.error("No es un producto");
       return res.status(400).send("Bad Request");
@@ -36,7 +35,6 @@ async function handleProductUpdate(req, res) {
 
     console.log("Producto actualizado:", productData.id);
 
-    // Buscar el producto actualizado en la base de datos
     const product = await shopifyService.getProductById(productData.id);
     if (!product) {
       console.error(
@@ -45,8 +43,15 @@ async function handleProductUpdate(req, res) {
       return res.status(404).send("Not Found");
     }
 
-    // Actualizar ramos o realizar otras acciones necesarias
-    await shopifyService.updateRamosSimples(productData.id);
+    const contenidoEnRamo = await shopifyService.contenidoEnRamo(
+      productData.id
+    );
+
+    await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
+    if (contenidoEnRamo) {
+      console.log("El producto actualizado está contenido en un ramo");
+      return res.status(200).send("Webhook recibido");
+    }
 
     res.status(200).send("Webhook recibido");
   } catch (error) {

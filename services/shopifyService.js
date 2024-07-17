@@ -10,6 +10,20 @@ const shopify = new Shopify({
   password: ACCESS_TOKEN,
 });
 
+async function retryWithBackoff(fn, retries = 5, delay = 1000) {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error.statusCode === 429 && retries > 0) {
+      console.log(`Rate limit hit, retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return retryWithBackoff(fn, retries - 1, delay * 2);
+    } else {
+      throw error;
+    }
+  }
+}
+
 async function listProducts() {
   try {
     const products = await shopify.product.list();
@@ -26,8 +40,7 @@ async function listProducts() {
 
 async function getProductById(id) {
   try {
-    const product = await shopify.product.get(id);
-    return product;
+    return await shopify.product.get(id);
   } catch (error) {
     console.error("Error fetching product:", error);
     return null;
@@ -36,20 +49,20 @@ async function getProductById(id) {
 
 async function getProductMetafields(productId) {
   try {
-    const metafields = await shopify.metafield.list({
+    return await shopify.metafield.list({
       metafield: { owner_resource: "product", owner_id: productId },
     });
-    return metafields;
   } catch (error) {
+    console.error("Error fetching metafields:", error);
     return [];
   }
 }
 
 async function getProductByProductType(productType) {
   try {
-    const products = await shopify.product.list({ product_type: productType });
-    return products;
+    return await shopify.product.list({ product_type: productType });
   } catch (error) {
+    console.error("Error fetching products by type:", error);
     return [];
   }
 }
@@ -57,48 +70,40 @@ async function getProductByProductType(productType) {
 async function getProductosFromRamo(ramo) {
   try {
     const metafields = await getProductMetafields(ramo.id);
-    if (!metafields) {
-      return [];
-    }
+    if (!metafields.length) return [];
+
     const data_productos = [];
     for (let i = 1; i <= 20; i++) {
-      let producto = metafields.find(
+      const productoMetafield = metafields.find(
         (metafield) => metafield.key === `producto_${i}`
       );
-      const cantidad = metafields.find(
+      const cantidadMetafield = metafields.find(
         (metafield) => metafield.key === `cantidad_del_producto_${i}`
       );
-      if (producto && cantidad) {
-        if (!producto.value) {
-          console.error("El metafield no tiene un valor de producto");
-          continue;
-        }
-        if (!cantidad.value) {
-          console.error("El metafield no tiene un valor de cantidad");
-          continue;
-        }
-        producto.value = producto.value.replace(/[^0-9]/g, "");
 
-        let p = await getProductById(producto.value);
-        if (!p) {
-          console.error("Producto no encontrado");
-          continue;
+      if (productoMetafield && cantidadMetafield) {
+        const productoId = productoMetafield.value.replace(/[^0-9]/g, "");
+        const cantidad = parseFloat(cantidadMetafield.value);
+
+        const producto = await getProductById(productoId);
+        if (producto) {
+          data_productos.push({
+            producto: {
+              id: producto.id,
+              title: producto.title,
+              product_type: producto.product_type,
+              variants: producto.variants,
+            },
+            cantidad,
+          });
+        } else {
+          console.error("Producto no encontrado para ID:", productoId);
         }
-        p = {
-          id: p.id,
-          title: p.title,
-          product_type: p.product_type,
-          variants: p.variants,
-        };
-        data_productos.push({
-          producto: p,
-          cantidad: cantidad.value,
-        });
       }
     }
     return data_productos;
   } catch (error) {
-    console.log("Error obteniendo los productos de un ramo");
+    console.error("Error obteniendo los productos de un ramo:", error);
     return [];
   }
 }
@@ -106,24 +111,24 @@ async function getProductosFromRamo(ramo) {
 async function obtenerRamosContienenProducto(productId) {
   try {
     let ramos = await getProductByProductType("Ramo");
-    for (let product of ramos) {
-      product.productos = await getProductosFromRamo(product);
-    }
-    ramos = ramos.filter((ramo) => {
-      const productos = ramo.productos.map((producto) => producto.producto.id);
-      return productos.includes(productId);
-    });
-    return ramos;
+    ramos = await Promise.all(
+      ramos.map(async (ramo) => {
+        ramo.productos = await getProductosFromRamo(ramo);
+        return ramo;
+      })
+    );
+    return ramos.filter((ramo) =>
+      ramo.productos.some((producto) => producto.producto.id === productId)
+    );
   } catch (error) {
-    console.error("Error fetching products:", error);
+    console.error("Error fetching ramos containing product:", error);
     return [];
   }
 }
 
-async function updateRamosSimples(productId) {
+async function actualizarRamosSimplesDeProducto(productId) {
   try {
-    console.log("ID del producto recibido: ", productId);
-    const id = parseInt(productId);
+    const id = parseInt(productId, 10);
     const product = await getProductById(id);
     if (!product) {
       console.error(
@@ -131,64 +136,67 @@ async function updateRamosSimples(productId) {
       );
       return [];
     }
-    console.log("Producto encontrado: ", product.title);
     const precioNuevo = parseFloat(product.variants[0].price);
     const ramos = await obtenerRamosContienenProducto(id);
 
     const ramosSimples = ramos.filter((ramo) => {
-      const tieneSoloUnVariant = ramo.productos.every(
-        (producto) => producto.producto.variants.length === 1
+      return (
+        ramo.productos.every(
+          (producto) => producto.producto.variants.length === 1
+        ) && ramo.variants.length === 1
       );
-      return tieneSoloUnVariant && ramo.variants.length === 1;
     });
-
-    if (ramosSimples.length === 0) {
-      console.log("No hay ramos simples del producto ", product.title);
-      return [];
-    }
-
-    console.log(
-      ramosSimples.length,
-      " ramos simples ",
-      "encontrados para el producto ",
-      product.title
-    );
 
     const updatePromises = ramosSimples.map(async (ramo) => {
       let precioRamo = 0;
-      for (let producto of ramo.productos) {
+      ramo.productos.forEach((producto) => {
         const precioProducto = parseFloat(producto.producto.variants[0].price);
-        const cantidad = parseFloat(producto.cantidad);
-
+        const cantidad = producto.cantidad;
         precioRamo +=
-          producto.producto.id !== id
-            ? precioProducto * cantidad
-            : precioNuevo * cantidad;
-      }
-
+          (producto.producto.id !== id ? precioProducto : precioNuevo) *
+          cantidad;
+      });
       const precioRamoNuevo = precioRamo.toFixed(2);
-
-      try {
-        if (precioRamoNuevo !== ramo.variants[0].price) {
-          const productName = ramo.title;
-          const variant = ramo.variants[0];
-          console.log(
-            `Actualizando el precio del ramo ${productName} de ${variant.price} a ${precioRamoNuevo}`
-          );
-          await shopify.productVariant.update(ramo.variants[0].id, {
-            price: precioRamoNuevo,
-          });
-        }
-      } catch (updateError) {
-        console.error(`Error updating variant ${ramo.variants[0].id}:`);
+      if (precioRamoNuevo !== ramo.variants[0].price) {
+        await shopify.productVariant.update(ramo.variants[0].id, {
+          price: precioRamoNuevo,
+        });
+        console.log(
+          `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo}`
+        );
       }
     });
 
     await Promise.all(updatePromises);
     return ramosSimples;
   } catch (error) {
-    console.error("Error fetching products:", error);
+    console.error("Error actualizando ramos simples:", error);
     throw error;
+  }
+}
+
+async function contenidoEnRamo(productId) {
+  try {
+    // Obtener todos los ramos
+    const ramos = await getProductByProductType("Ramo");
+
+    // Verificar cada ramo
+    for (let ramo of ramos) {
+      const productosEnRamo = await getProductosFromRamo(ramo);
+
+      // Comprobar si el productId está en los productos del ramo
+      const productosIds = productosEnRamo.map(
+        (producto) => producto.producto.id
+      );
+      if (productosIds.includes(productId)) {
+        return true; // El producto está en el ramo
+      }
+    }
+
+    return false; // El producto no está en ningún ramo
+  } catch (error) {
+    console.error("Error verificando contenido en ramo:", error);
+    return false; // En caso de error, retornamos false
   }
 }
 
@@ -199,5 +207,6 @@ module.exports = {
   getProductByProductType,
   getProductosFromRamo,
   obtenerRamosContienenProducto,
-  updateRamosSimples,
+  actualizarRamosSimplesDeProducto,
+  contenidoEnRamo,
 };
