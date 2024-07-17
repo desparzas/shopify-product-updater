@@ -24,33 +24,25 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    // console.log("Webhook recibido");
-    // console.log("_________________");
-    // console.log(productData);
-    // console.log("_________________");
     if (!productData) {
       console.error("No es un producto");
       return res.status(400).send("Bad Request");
-    }
-
-    console.log("Producto actualizado:", productData.id);
-
-    const product = await shopifyService.getProductById(productData.id);
-    if (!product) {
-      console.error(
-        "Producto no encontrado en la base de datos desde el handler"
-      );
-      return res.status(404).send("Not Found");
     }
 
     const contenidoEnRamo = await shopifyService.contenidoEnRamo(
       productData.id
     );
 
-    await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
     if (contenidoEnRamo) {
-      console.log("El producto actualizado está contenido en un ramo");
+      console.log(`El producto ${productData.title} está contenido en un ramo`);
+      console.log("Actualizando ramos simples");
+      await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
+      console.log("Ramos simples actualizados");
       return res.status(200).send("Webhook recibido");
+    } else {
+      console.log(
+        `El producto ${productData.title} no está contenido en un ramo`
+      );
     }
 
     res.status(200).send("Webhook recibido");

@@ -18,7 +18,6 @@ app.use((req, res, next) => {
 
   // Si buscas el HMAC, asumiendo que viene en los headers
   const hmac = req.headers["x-shopify-hmac-sha256"]; // Cambia según el nombre del header
-  console.log("HMAC:", hmac);
   next();
 });
 
