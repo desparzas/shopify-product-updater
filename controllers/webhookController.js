@@ -1,9 +1,7 @@
 const config = require("../utils/config");
 const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
-
-const processedEvents = new Set(); // Para almacenar eventos procesados
-
+const processedProducts = new Set();
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
   const hmac = req.headers["x-shopify-hmac-sha256"];
@@ -23,20 +21,15 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    const topic = req.headers["x-shopify-topic"]; // Captura el encabezado de evento
-    const eventId = `${topic}-${productData.id}-${Date.now()}`; // Crear un identificador único
-
-    // Verificar si el evento ya fue procesado
-    if (processedEvents.has(eventId)) {
-      if (Date.now() - processedEvents.get(eventId) < 300000) {
-        return res.status(200).send("Webhook ya procesado");
-      }
+    if (processedProducts.has(productData.id)) {
+      return res.status(200).send("Evento ya procesado recientemente.");
     }
 
+    processedProducts.add(productData.id);
+    setTimeout(() => processedProducts.delete(productData.id), 300000);
+
     console.log("Procesando webhook para el producto ", productData.title);
-    console.log("Evento: ", topic);
-    console.log("Eventos procesados: ", processedEvents.values());
-    processedEvents.add(eventId);
+    console.log("ARRAY DE PRODUCTOS PROCESADOS: ", processedProducts);
 
     const contenidoEnRamo = await shopifyService.contenidoEnRamo(
       productData.id
