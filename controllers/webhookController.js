@@ -11,7 +11,6 @@ function verifyHMAC(req, res, next) {
     .digest("base64");
 
   if (hash !== hmac) {
-    console.log("HMAC no coincide");
     return res.status(401).send("Unauthorized");
   } else {
     console.log("HMAC coincide");
