@@ -1,7 +1,6 @@
 const config = require("../utils/config");
 const Shopify = require("shopify-api-node");
 const fs = require("fs");
-const { get } = require("http");
 const { ACCESS_TOKEN, SHOP, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SCOPES } =
   config;
 
@@ -30,6 +29,7 @@ async function getProductById(id) {
     const product = await shopify.product.get(id);
     return product;
   } catch (error) {
+    console.error("Error fetching product:", error);
     return null;
   }
 }
@@ -58,7 +58,6 @@ async function getProductosFromRamo(ramo) {
   try {
     const metafields = await getProductMetafields(ramo.id);
     if (!metafields) {
-      console.error("No se encontraron metafields para el ramo ", ramo.id);
       return [];
     }
     const data_productos = [];
@@ -69,7 +68,6 @@ async function getProductosFromRamo(ramo) {
       const cantidad = metafields.find(
         (metafield) => metafield.key === `cantidad_del_producto_${i}`
       );
-      console.log("Producto: ", producto, " Cantidad: ", cantidad);
       if (producto && cantidad) {
         if (!producto.value) {
           console.error("El metafield no tiene un valor de producto");
@@ -82,6 +80,10 @@ async function getProductosFromRamo(ramo) {
         producto.value = producto.value.replace(/[^0-9]/g, "");
 
         let p = await getProductById(producto.value);
+        if (!p) {
+          console.error("Producto no encontrado");
+          continue;
+        }
         p = {
           id: p.id,
           title: p.title,
@@ -121,7 +123,8 @@ async function obtenerRamosContienenProducto(productId) {
 async function updateRamosSimples(productId) {
   try {
     console.log("ID del producto recibido: ", productId);
-    const product = await getProductById(productId);
+    const id = parseInt(productId);
+    const product = await getProductById(id);
     if (!product) {
       console.error(
         "Producto no encontrado en la base de datos desde la función updateRamosSimples"
@@ -130,7 +133,7 @@ async function updateRamosSimples(productId) {
     }
     console.log("Producto encontrado: ", product.title);
     const precioNuevo = parseFloat(product.variants[0].price);
-    const ramos = await obtenerRamosContienenProducto(productId);
+    const ramos = await obtenerRamosContienenProducto(id);
 
     const ramosSimples = ramos.filter((ramo) => {
       const tieneSoloUnVariant = ramo.productos.every(
@@ -145,9 +148,9 @@ async function updateRamosSimples(productId) {
     }
 
     console.log(
-      "Ramos simples: ",
       ramosSimples.length,
-      " del producto ",
+      " ramos simples ",
+      "encontrados para el producto ",
       product.title
     );
 
@@ -158,13 +161,12 @@ async function updateRamosSimples(productId) {
         const cantidad = parseFloat(producto.cantidad);
 
         precioRamo +=
-          producto.producto.id !== productId
+          producto.producto.id !== id
             ? precioProducto * cantidad
             : precioNuevo * cantidad;
       }
 
       const precioRamoNuevo = precioRamo.toFixed(2);
-      console.log("Precio del ramo nuevo: ", precioRamoNuevo);
 
       try {
         if (precioRamoNuevo !== ramo.variants[0].price) {
