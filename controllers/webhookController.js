@@ -26,7 +26,7 @@ async function handleProductUpdate(req, res) {
     }
 
     processedProducts.add(productData.id);
-    setTimeout(() => processedProducts.delete(productData.id), 300000);
+    setTimeout(() => processedProducts.delete(productData.id), 60000);
 
     console.log("Procesando webhook para el producto ", productData.title);
     console.log("ARRAY DE PRODUCTOS PROCESADOS: ", processedProducts);

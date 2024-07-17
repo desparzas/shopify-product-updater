@@ -144,12 +144,12 @@ async function actualizarRamosSimplesDeProducto(productId) {
       });
       const precioRamoNuevo = precioRamo.toFixed(2);
       if (precioRamoNuevo !== ramo.variants[0].price) {
+        console.log(
+          `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo} de ${ramo.variants[0].price} a ${precioRamoNuevo}`
+        );
         await shopify.productVariant.update(ramo.variants[0].id, {
           price: precioRamoNuevo,
         });
-        console.log(
-          `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo}`
-        );
       }
     }
 
