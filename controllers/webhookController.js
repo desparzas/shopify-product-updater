@@ -2,7 +2,7 @@ const config = require("../utils/config");
 const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
 
-const processedEvents = new Set(); // Para almacenar eventos procesados
+// const processedEvents = new Set(); // Para almacenar eventos procesados
 
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
@@ -14,8 +14,6 @@ function verifyHMAC(req, res, next) {
 
   if (hash !== hmac) {
     return res.status(401).send("Unauthorized");
-  } else {
-    console.log("HMAC coincide");
   }
 
   next();
@@ -25,15 +23,18 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    const topic = req.headers["x-shopify-topic"]; // Captura el encabezado de evento
-    const eventId = `${topic}-${productData.id}-${Date.now()}`; // Crear un identificador único
+    // const topic = req.headers["x-shopify-topic"]; // Captura el encabezado de evento
+    // const eventId = `${topic}-${productData.id}-${Date.now()}`; // Crear un identificador único
 
-    // Verificar si el evento ya fue procesado
-    if (processedEvents.has(eventId)) {
-      console.log(`Evento ya procesado: ${eventId}`);
-      return res.status(200).send("Webhook recibido");
-    }
-    processedEvents.add(eventId);
+    // // Verificar si el evento ya fue procesado
+    // if (processedEvents.has(eventId)) {
+    //   // si fue procesado hace menos de 1 minutos, se ignora
+    //   if (Date.now() - parseInt(eventId.split("-")[2], 10) < 60000) {
+    //     return res.status(200).send("Webhook ya procesado");
+    //   }
+    // }
+
+    // processedEvents.add(eventId);
 
     const contenidoEnRamo = await shopifyService.contenidoEnRamo(
       productData.id
@@ -48,8 +49,8 @@ async function handleProductUpdate(req, res) {
         `El producto ${productData.title} no está contenido en un ramo`
       );
     }
-
-    res.status(200).send("Webhook recibido");
+    console.log("Webhook procesado para el producto ", productData.title);
+    return res.status(200).send("Webhook recibido");
   } catch (error) {
     console.error("Error handling product update webhook:", error);
     res.status(500).send("Internal Server Error");
