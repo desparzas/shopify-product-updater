@@ -133,7 +133,7 @@ async function actualizarRamosSimplesDeProducto(productId) {
       );
     });
 
-    const updatePromises = ramosSimples.map(async (ramo) => {
+    for (const ramo of ramosSimples) {
       let precioRamo = 0;
       ramo.productos.forEach((producto) => {
         const precioProducto = parseFloat(producto.producto.variants[0].price);
@@ -144,18 +144,15 @@ async function actualizarRamosSimplesDeProducto(productId) {
       });
       const precioRamoNuevo = precioRamo.toFixed(2);
       if (precioRamoNuevo !== ramo.variants[0].price) {
-        await retryWithBackoff(async () => {
-          await shopify.productVariant.update(ramo.variants[0].id, {
-            price: precioRamoNuevo,
-          });
+        await shopify.productVariant.update(ramo.variants[0].id, {
+          price: precioRamoNuevo,
         });
         console.log(
           `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo}`
         );
       }
-    });
+    }
 
-    await Promise.all(updatePromises);
     console.log("Ramos simples actualizados del producto ", product.title);
     return ramosSimples;
   } catch (error) {
