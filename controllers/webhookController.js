@@ -37,7 +37,7 @@ async function handleProductUpdate(req, res) {
 
     if (contenidoEnRamo) {
       console.log(`El producto ${productData.title} está contenido en un ramo`);
-      shopifyService.actualizarRamosSimplesDeProducto(productData.id);
+      await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
       console.log(
         "Ramos simples actualizados del producto ",
         productData.title

@@ -146,7 +146,7 @@ async function actualizarRamosSimplesDeProducto(productId) {
         console.log(
           `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo} de ${ramo.variants[0].price} a ${precioRamoNuevo}`
         );
-        shopify.productVariant.update(ramo.variants[0].id, {
+        await shopify.productVariant.update(ramo.variants[0].id, {
           price: precioRamoNuevo,
         });
       }
