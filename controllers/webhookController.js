@@ -28,7 +28,7 @@ async function handleProductUpdate(req, res) {
 
     // Verificar si el evento ya fue procesado
     if (processedEvents.has(eventId)) {
-      if (Date.now() - processedEvents.get(eventId) < 60000) {
+      if (Date.now() - processedEvents.get(eventId) < 300000) {
         return res.status(200).send("Webhook ya procesado");
       }
     }
