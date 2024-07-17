@@ -24,10 +24,10 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    console.log("Webhook recibido");
-    console.log("_________________");
-    console.log(productData);
-    console.log("_________________");
+    // console.log("Webhook recibido");
+    // console.log("_________________");
+    // console.log(productData);
+    // console.log("_________________");
     if (!productData) {
       console.error("No es un producto");
       return res.status(400).send("Bad Request");
