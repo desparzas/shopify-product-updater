@@ -158,9 +158,9 @@ async function actualizarRamosSimplesDeProducto(productId) {
   }
 }
 
-async function contenidoEnRamo(productId) {
+async function contenidoEnRamoSimple(productId) {
   return retryWithBackoff(async () => {
-    const ramos = await getProductByProductType("Ramo");
+    const ramos = await getProductByProductType("Ramo Simple");
     for (let ramo of ramos) {
       const productosEnRamo = await getProductosFromRamo(ramo);
       const productosIds = productosEnRamo.map(
@@ -182,5 +182,5 @@ module.exports = {
   getProductosFromRamo,
   obtenerRamosSimplesContienenProducto,
   actualizarRamosSimplesDeProducto,
-  contenidoEnRamo,
+  contenidoEnRamoSimple,
 };
