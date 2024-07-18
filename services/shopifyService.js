@@ -97,9 +97,9 @@ async function getProductosFromRamo(ramo) {
   }
 }
 
-async function obtenerRamosContienenProducto(productId) {
+async function obtenerRamosSimplesContienenProducto(productId) {
   return retryWithBackoff(async () => {
-    let ramos = await getProductByProductType("Ramo");
+    let ramos = await getProductByProductType("Ramo Simple");
     ramos = await Promise.all(
       ramos.map(async (ramo) => {
         ramo.productos = await getProductosFromRamo(ramo);
@@ -122,7 +122,7 @@ async function actualizarRamosSimplesDeProducto(productId) {
       );
     }
     const precioNuevo = parseFloat(product.variants[0].price);
-    const ramos = await obtenerRamosContienenProducto(id);
+    const ramos = await obtenerRamosSimplesContienenProducto(id);
 
     const ramosSimples = ramos.filter((ramo) => {
       return (
@@ -180,7 +180,7 @@ module.exports = {
   getProductMetafields,
   getProductByProductType,
   getProductosFromRamo,
-  obtenerRamosContienenProducto,
+  obtenerRamosSimplesContienenProducto,
   actualizarRamosSimplesDeProducto,
   contenidoEnRamo,
 };
