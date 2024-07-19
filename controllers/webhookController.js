@@ -29,32 +29,31 @@ async function handleProductUpdate(req, res) {
     setTimeout(() => processedProducts.delete(productData.id), 300000);
 
     console.log("Procesando webhook para el producto ", productData.title);
-    console.log("ARRAY DE PRODUCTOS PROCESADOS: ", processedProducts);
 
-    const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
-      productData.id,
-      "Ramo Simple"
-    );
+    // const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
+    //   productData.id,
+    //   "Ramo Simple"
+    // );
 
     const contenidoEnGloboNumero = await shopifyService.contenidoEnPaquete(
       productData.id,
       "Globo de Número"
     );
 
-    if (contenidoEnRamo) {
-      console.log(
-        `El producto ${productData.title} está contenido en un ramo simple`
-      );
-      await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
-      console.log(
-        "Ramos simples actualizados del producto ",
-        productData.title
-      );
-    } else {
-      console.log(
-        `El producto ${productData.title} no está contenido en un ramo simple`
-      );
-    }
+    // if (contenidoEnRamo) {
+    //   console.log(
+    //     `El producto ${productData.title} está contenido en un ramo simple`
+    //   );
+    //   await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
+    //   console.log(
+    //     "Ramos simples actualizados del producto ",
+    //     productData.title
+    //   );
+    // } else {
+    //   console.log(
+    //     `El producto ${productData.title} no está contenido en un ramo simple`
+    //   );
+    // }
 
     if (contenidoEnGloboNumero) {
       console.log(
