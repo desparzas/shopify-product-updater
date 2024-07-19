@@ -119,6 +119,7 @@ async function actualizarRamosSimplesDeProducto(productId) {
       console.log(
         "Producto no encontrado en la base de datos desde la función updateRamosSimples"
       );
+      return;
     }
     const precioNuevo = parseFloat(product.variants[0].price);
     const ramos = await obtenerBundlesContienenProducto(id, "Ramo Simple");
@@ -130,7 +131,7 @@ async function actualizarRamosSimplesDeProducto(productId) {
       );
     });
 
-    for (const ramo of ramosSimples) {
+    const actualizaciones = ramosSimples.map(async (ramo) => {
       let precioRamo = 0;
       ramo.productos.forEach((producto) => {
         const precioProducto = parseFloat(producto.producto.variants[0].price);
@@ -144,15 +145,20 @@ async function actualizarRamosSimplesDeProducto(productId) {
         console.log(
           `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo} de ${ramo.variants[0].price} a ${precioRamoNuevo}`
         );
-        await shopify.productVariant.update(ramo.variants[0].id, {
-          price: precioRamoNuevo,
-        });
+
+        await retryWithBackoff(() =>
+          shopify.productVariant.update(ramo.variants[0].id, {
+            price: precioRamoNuevo,
+          })
+        );
       }
-    }
+    });
+
+    await Promise.all(actualizaciones);
 
     console.log("Ramos simples actualizados del producto ", product.title);
   } catch (error) {
-    console.log("Error actualizando ramos simples");
+    console.log("Error actualizando ramos simples: ", error);
   }
 }
 
@@ -164,12 +170,14 @@ async function actualizarGlobosNumeradosDeProducto(productId) {
       console.log(
         "Producto no encontrado en la base de datos desde la función updateRamosSimples"
       );
+      return;
     }
     const globosNumerados = await obtenerBundlesContienenProducto(
       id,
       "Globo de Número"
     );
-    for (const globo of globosNumerados) {
+
+    const actualizaciones = globosNumerados.map(async (globo) => {
       let variantsTemp = JSON.parse(JSON.stringify(globo.variants));
       const posibleOptions = [];
       for (let variant of variantsTemp) {
@@ -198,7 +206,6 @@ async function actualizarGlobosNumeradosDeProducto(productId) {
         const variantTemp = variantsTemp.find(
           (variant) => variant.option1 === `Globo N°${i}`
         );
-        // obtener tambien el index de variantTemp
         const index = variantsTemp.indexOf(variantTemp);
         const variant = globo.variants.find(
           (variant) => variant.option1 === `Globo N°${i}`
@@ -215,14 +222,19 @@ async function actualizarGlobosNumeradosDeProducto(productId) {
           variantsUpdated = true;
         }
       }
-      if (variantsUpdated) {
-        await shopify.product.update(globo.id, { variants: variantsTemp });
-      }
 
-      // actualizar los variants
-    }
+      if (variantsUpdated) {
+        await retryWithBackoff(() =>
+          shopify.product.update(globo.id, { variants: variantsTemp })
+        );
+      }
+    });
+
+    await Promise.all(actualizaciones);
+
+    console.log("Globos numerados actualizados del producto ", product.title);
   } catch (error) {
-    console.log("Error actualizando globos numerados");
+    console.log("Error actualizando globos numerados: ", error);
   }
 }
 
@@ -230,6 +242,7 @@ async function contenidoEnPaquete(productId, bundleType) {
   return retryWithBackoff(async () => {
     const ramos = await getProductByProductType(bundleType);
     for (let ramo of ramos) {
+      console.log("Buscando en el ramo", ramo.title);
       const productosEnRamo = await getProductosFromProducto(ramo);
       const productosIds = productosEnRamo.map(
         (producto) => producto.producto.id

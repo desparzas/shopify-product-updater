@@ -28,7 +28,12 @@ async function handleProductUpdate(req, res) {
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 300000);
 
-    console.log("Procesando webhook para el producto ", productData.title);
+    console.log(
+      "Procesando webhook para el producto ",
+      productData.id,
+      "-",
+      productData.title
+    );
 
     const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
       productData.id,
