@@ -169,11 +169,7 @@ async function actualizarGlobosNumeradosDeProducto(productId) {
       id,
       "Globo de Número"
     );
-
-    console.log("Globos numerados encontrados: ", globosNumerados.length);
     for (const globo of globosNumerados) {
-      console.log("_________________");
-      console.log("Globo: ", globo.title);
       let variantsTemp = JSON.parse(JSON.stringify(globo.variants));
       const posibleOptions = [];
       for (let variant of variantsTemp) {
@@ -204,8 +200,6 @@ async function actualizarGlobosNumeradosDeProducto(productId) {
         );
         // obtener tambien el index de variantTemp
         const index = variantsTemp.indexOf(variantTemp);
-        console.log("Index: ", index);
-
         const variant = globo.variants.find(
           (variant) => variant.option1 === `Globo N°${i}`
         );
@@ -217,21 +211,14 @@ async function actualizarGlobosNumeradosDeProducto(productId) {
         if (variant.price !== sumaSimples + parseFloat(unitVariant.price)) {
           const precioNuevo = sumaSimples + parseFloat(unitVariant.price);
           const precioNuevoString = precioNuevo.toFixed(2);
-          console.log("Globo N°", i);
-          console.log("Precio actual: ", variant.price);
-          console.log("Precio unitario: ", unitVariant.price);
-          console.log("Suma Simples:", sumaSimples);
-          console.log("Precio nuevo: ", precioNuevoString);
           variantsTemp[index].price = precioNuevoString;
           variantsUpdated = true;
         }
       }
       if (variantsUpdated) {
         await shopify.product.update(globo.id, { variants: variantsTemp });
-        console.log(`Producto ${globo.title} actualizado en Shopify.`);
       }
 
-      console.log("_________________");
       // actualizar los variants
     }
   } catch (error) {

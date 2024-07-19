@@ -40,20 +40,20 @@ async function handleProductUpdate(req, res) {
       "Globo de Número"
     );
 
-    // if (contenidoEnRamo) {
-    //   console.log(
-    //     `El producto ${productData.title} está contenido en un ramo simple`
-    //   );
-    //   await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
-    //   console.log(
-    //     "Ramos simples actualizados del producto ",
-    //     productData.title
-    //   );
-    // } else {
-    //   console.log(
-    //     `El producto ${productData.title} no está contenido en un ramo simple`
-    //   );
-    // }
+    if (contenidoEnRamo) {
+      console.log(
+        `El producto ${productData.title} está contenido en un ramo simple`
+      );
+      await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
+      console.log(
+        "Ramos simples actualizados del producto ",
+        productData.title
+      );
+    } else {
+      console.log(
+        `El producto ${productData.title} no está contenido en un ramo simple`
+      );
+    }
 
     if (contenidoEnGloboNumero) {
       console.log(
