@@ -30,10 +30,10 @@ async function handleProductUpdate(req, res) {
 
     console.log("Procesando webhook para el producto ", productData.title);
 
-    // const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
-    //   productData.id,
-    //   "Ramo Simple"
-    // );
+    const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
+      productData.id,
+      "Ramo Simple"
+    );
 
     const contenidoEnGloboNumero = await shopifyService.contenidoEnPaquete(
       productData.id,
