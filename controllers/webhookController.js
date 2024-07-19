@@ -31,12 +31,20 @@ async function handleProductUpdate(req, res) {
     console.log("Procesando webhook para el producto ", productData.title);
     console.log("ARRAY DE PRODUCTOS PROCESADOS: ", processedProducts);
 
-    const contenidoEnRamo = await shopifyService.contenidoEnRamoSimple(
-      productData.id
+    const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
+      productData.id,
+      "Ramo Simple"
+    );
+
+    const contenidoEnGloboNumero = await shopifyService.contenidoEnPaquete(
+      productData.id,
+      "Globo de Número"
     );
 
     if (contenidoEnRamo) {
-      console.log(`El producto ${productData.title} está contenido en un ramo`);
+      console.log(
+        `El producto ${productData.title} está contenido en un ramo simple`
+      );
       await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
       console.log(
         "Ramos simples actualizados del producto ",
@@ -44,9 +52,21 @@ async function handleProductUpdate(req, res) {
       );
     } else {
       console.log(
-        `El producto ${productData.title} no está contenido en un ramo`
+        `El producto ${productData.title} no está contenido en un ramo simple`
       );
     }
+
+    if (contenidoEnGloboNumero) {
+      console.log(
+        `El producto ${productData.title} está contenido en un globo de número`
+      );
+      await shopifyService.actualizarGlobosNumeradosDeProducto(productData.id);
+    } else {
+      console.log(
+        `El producto ${productData.title} no está contenido en un globo de número`
+      );
+    }
+
     console.log("Webhook procesado para el producto ", productData.title);
     return res.status(200).send("Webhook recibido");
   } catch (error) {
