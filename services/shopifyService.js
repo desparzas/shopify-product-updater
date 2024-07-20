@@ -91,7 +91,7 @@ async function getProductosFromProducto(ramo) {
     }
     return data_productos;
   } catch (error) {
-    console.error("Error obteniendo los productos de un ramo");
+    console.error("Error obteniendo los productos de un ramo", error);
     return [];
   }
 }
