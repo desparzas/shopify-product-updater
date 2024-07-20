@@ -242,7 +242,7 @@ async function contenidoEnPaquete(productId, bundleType) {
   return retryWithBackoff(async () => {
     const ramos = await getProductByProductType(bundleType);
     for (let ramo of ramos) {
-      console.log("Buscando en el ramo", ramo.title);
+      // console.log("Buscando en el ramo", ramo.title);
       const productosEnRamo = await getProductosFromProducto(ramo);
       const productosIds = productosEnRamo.map(
         (producto) => producto.producto.id
