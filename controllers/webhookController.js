@@ -27,12 +27,12 @@ async function handleProductUpdate(req, res) {
       "-",
       productData.title
     );
-    // if (processedProducts.has(productData.id)) {
-    //   return res.status(200).send("Evento ya procesado recientemente.");
-    // }
+    if (processedProducts.has(productData.id)) {
+      return res.status(200).send("Evento ya procesado recientemente.");
+    }
 
-    // processedProducts.add(productData.id);
-    // setTimeout(() => processedProducts.delete(productData.id), 120000);
+    processedProducts.add(productData.id);
+    setTimeout(() => processedProducts.delete(productData.id), 120000);
 
     const tieneProductos = await shopifyService.tieneProductos(productData.id);
     if (tieneProductos) {
