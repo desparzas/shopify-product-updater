@@ -27,9 +27,7 @@ async function listProducts() {
   return retryWithBackoff(async () => {
     const products = await shopify.product.list();
     for (let product of products) {
-      if (product.product_type === "Ramo") {
-        product.metafields = await getProductMetafields(product.id);
-      }
+      product.metafields = await getProductCustomMetafields(product.id);
     }
     return products;
   });
@@ -49,24 +47,37 @@ async function getProductMetafields(productId) {
   });
 }
 
+async function getProductCustomMetafields(productId) {
+  return retryWithBackoff(async () => {
+    return await shopify.metafield.list({
+      metafield: {
+        owner_resource: "product",
+        owner_id: productId,
+        namespace: "custom",
+      },
+    });
+  });
+}
+
 async function getProductByProductType(productType) {
   return retryWithBackoff(async () => {
     return await shopify.product.list({ product_type: productType });
   });
 }
 
-async function getProductosFromProducto(ramo) {
+async function getProductosFromProducto(id) {
   try {
-    const metafields = await getProductMetafields(ramo.id);
+    const metafields = await getProductMetafields(id);
     if (!metafields.length) return [];
 
     const data_productos = [];
     for (let i = 1; i <= 20; i++) {
       const productoMetafield = metafields.find(
-        (metafield) => metafield.key === `producto_${i}`
+        (metafield) => metafield.key === `producto_${i}` && metafield.value
       );
       const cantidadMetafield = metafields.find(
-        (metafield) => metafield.key === `cantidad_del_producto_${i}`
+        (metafield) =>
+          metafield.key === `cantidad_del_producto_${i}` && metafield.value
       );
 
       if (productoMetafield && cantidadMetafield) {
@@ -101,7 +112,7 @@ async function obtenerBundlesContienenProducto(productId, bundleType) {
     let ramos = await getProductByProductType(bundleType);
     ramos = await Promise.all(
       ramos.map(async (ramo) => {
-        ramo.productos = await getProductosFromProducto(ramo);
+        ramo.productos = await getProductosFromProducto(ramo.id);
         return ramo;
       })
     );
@@ -109,6 +120,36 @@ async function obtenerBundlesContienenProducto(productId, bundleType) {
       ramo.productos.some((producto) => producto.producto.id === productId)
     );
   });
+}
+
+async function tieneProductos(id) {
+  try {
+    const metafields = await getProductMetafields(id);
+    // console.log("Metafields", metafields);
+
+    if (!metafields.length) return false;
+
+    for (let i = 1; i <= 20; i++) {
+      const productoMetafield = metafields.find(
+        (metafield) => metafield.key === `producto_${i}` && metafield.value
+      );
+      const cantidadMetafield = metafields.find(
+        (metafield) =>
+          metafield.key === `cantidad_del_producto_${i}` && metafield.value
+      );
+
+      if (productoMetafield && cantidadMetafield) {
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error(
+      "Error verificando si el producto contiene otros productos",
+      error
+    );
+    return false;
+  }
 }
 
 async function actualizarRamosSimplesDeProducto(productId) {
@@ -243,7 +284,7 @@ async function contenidoEnPaquete(productId, bundleType) {
     const ramos = await getProductByProductType(bundleType);
     for (let ramo of ramos) {
       // console.log("Buscando en el ramo", ramo.title);
-      const productosEnRamo = await getProductosFromProducto(ramo);
+      const productosEnRamo = await getProductosFromProducto(ramo.id);
       const productosIds = productosEnRamo.map(
         (producto) => producto.producto.id
       );
@@ -265,4 +306,6 @@ module.exports = {
   actualizarRamosSimplesDeProducto,
   contenidoEnPaquete,
   actualizarGlobosNumeradosDeProducto,
+  tieneProductos,
+  getProductCustomMetafields,
 };

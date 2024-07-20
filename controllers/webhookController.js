@@ -27,20 +27,19 @@ async function handleProductUpdate(req, res) {
       "-",
       productData.title
     );
-    if (processedProducts.has(productData.id)) {
-      return res.status(200).send("Evento ya procesado recientemente.");
-    }
+    // if (processedProducts.has(productData.id)) {
+    //   return res.status(200).send("Evento ya procesado recientemente.");
+    // }
 
-    processedProducts.add(productData.id);
-    setTimeout(() => processedProducts.delete(productData.id), 120000);
+    // processedProducts.add(productData.id);
+    // setTimeout(() => processedProducts.delete(productData.id), 120000);
 
-    const notProcess = ["Ramo Simple", "Globo de Número"];
-
-    if (notProcess.includes(productData.product_type)) {
+    const tieneProductos = await shopifyService.tieneProductos(productData.id);
+    if (tieneProductos) {
       console.log(
-        `El producto ${productData.title} no es un producto que se deba procesar`
+        `El producto ${productData.title} tiene productos, no se procesará`
       );
-      return res.status(200).send("Webhook recibido");
+      return res.status(200).send("El producto tiene productos");
     }
 
     const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
