@@ -9,7 +9,7 @@ const shopify = new Shopify({
   password: ACCESS_TOKEN,
 });
 
-async function retryWithBackoff(fn, retries = 5, delay = 1000) {
+async function retryWithBackoff(fn, retries = 10, delay = 1000) {
   try {
     return await fn();
   } catch (error) {
