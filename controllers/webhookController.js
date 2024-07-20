@@ -21,6 +21,12 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
+    console.log(
+      "Procesando webhook para el producto ",
+      productData.id,
+      "-",
+      productData.title
+    );
     if (processedProducts.has(productData.id)) {
       return res.status(200).send("Evento ya procesado recientemente.");
     }
@@ -28,12 +34,14 @@ async function handleProductUpdate(req, res) {
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 120000);
 
-    console.log(
-      "Procesando webhook para el producto ",
-      productData.id,
-      "-",
-      productData.title
-    );
+    const notProcess = ["Ramo Simple", "Globo de Número"];
+
+    if (notProcess.includes(productData.product_type)) {
+      console.log(
+        `El producto ${productData.title} no es un producto que se deba procesar`
+      );
+      return res.status(200).send("Webhook recibido");
+    }
 
     const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
       productData.id,
