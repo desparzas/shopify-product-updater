@@ -52,6 +52,12 @@ async function handleProductUpdate(req, res) {
       "Globo de Número"
     );
 
+    const contenidoEnRamoDobleNumerado =
+      await shopifyService.contenidoEnPaquete(
+        productData.id,
+        "Ramo Doble Numerado"
+      );
+
     if (contenidoEnRamo) {
       console.log(
         `El producto ${productData.title} está contenido en un ramo simple`
@@ -75,6 +81,19 @@ async function handleProductUpdate(req, res) {
     } else {
       console.log(
         `El producto ${productData.title} no está contenido en un globo de número`
+      );
+    }
+
+    if (contenidoEnRamoDobleNumerado) {
+      console.log(
+        `El producto ${productData.title} está contenido en un ramo doble numerado`
+      );
+      await shopifyService.actualizarRamosDoblesNumeradosDeProducto(
+        productData.id
+      );
+    } else {
+      console.log(
+        `El producto ${productData.title} no está contenido en un ramo doble numerado`
       );
     }
 
