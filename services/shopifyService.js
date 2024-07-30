@@ -354,15 +354,14 @@ async function actualizarRamosDoblesNumeradosDeProducto(productId) {
 }
 
 async function contenidoEnPaquete(productId, bundleType = null) {
-  let ramos = [];
+  let bundles = [];
   if (!bundleType) {
-    ramos = await listProducts();
+    bundles = await listProducts();
   } else {
-    ramos = await getProductByProductType(bundleType);
+    bundles = await getProductByProductType(bundleType);
   }
-  for (let ramo of ramos) {
-    // console.log("Buscando en el ramo", ramo.title);
-    const productosEnRamo = await getProductosFromProducto(ramo.id);
+  for (let bundle of bundles) {
+    const productosEnRamo = await getProductosFromProducto(bundle.id);
     const productosIds = productosEnRamo.map(
       (producto) => producto.producto.id
     );
