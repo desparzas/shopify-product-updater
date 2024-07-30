@@ -241,7 +241,6 @@ async function procesarProducto(productId) {
       const variantes = calcularVariantes(bundle.productos);
 
       // Guardar las variantes en un archivo
-
       fs.writeFileSync(
         `./test/variantes${bundle.title}.json`,
         JSON.stringify(variantes, null, 2)
@@ -327,13 +326,11 @@ function calcularVariantes(productos) {
     return producto.options.length > 1 ||
       (producto.options.length === 1 && producto.options[0].name !== "Title")
       ? producto.variants.map((variant) => variant.title)
-      : producto.variants.map((variant) => null);
+      : producto.variants.map(() => null);
   });
-  console.log("Opciones por producto", opcionesPorProducto);
 
   // Obtener combinaciones de variantes
   const combinaciones = generarCombinaciones(opcionesPorProducto);
-  console.log("Combinaciones", combinaciones);
 
   // Generar las variantes del bundle
   const variantes = combinaciones.map((combinacion) => {
@@ -354,7 +351,43 @@ function calcularVariantes(productos) {
     };
   });
 
-  return variantes;
+  // Generar las opciones posibles del bundle
+  let position = 1;
+  let options = [];
+  const nameCounts = {};
+
+  const productosOpcionesValidas = productos.filter(
+    ({ producto }) =>
+      producto.options.length > 1 ||
+      (producto.options.length === 1 && producto.options[0].name !== "Title")
+  );
+
+  for (const { producto: p } of productosOpcionesValidas) {
+    const opciones = p.options.map((option) => {
+      const name = option.name;
+
+      // Incrementar el contador para el nombre de la opción
+      if (!nameCounts[name]) {
+        nameCounts[name] = 0;
+      }
+      nameCounts[name]++;
+
+      // Crear el nombre de la opción con un sufijo
+      const uniqueName = `${name} ${nameCounts[name]}`;
+
+      return {
+        position: position++,
+        name: uniqueName,
+        values: option.values,
+      };
+    });
+
+    options = [...options, ...opciones];
+  }
+  return {
+    variantes,
+    options,
+  };
 }
 
 module.exports = {
