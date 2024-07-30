@@ -354,10 +354,11 @@ async function actualizarRamosDoblesNumeradosDeProducto(productId) {
 }
 
 async function contenidoEnPaquete(productId, bundleType = null) {
+  let ramos = [];
   if (!bundleType) {
-    const ramos = await listProducts();
+    ramos = await listProducts();
   } else {
-    const ramos = await getProductByProductType(bundleType);
+    ramos = await getProductByProductType(bundleType);
   }
   for (let ramo of ramos) {
     // console.log("Buscando en el ramo", ramo.title);
