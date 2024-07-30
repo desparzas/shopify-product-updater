@@ -32,6 +32,7 @@ async function handleProductUpdate(req, res) {
 
     if (contenidoenBundle) {
       console.log("El producto es parte de un paquete");
+      await shopifyService.procesarProducto(id);
       return res.status(200).send("Producto es parte de un paquete");
     } else {
       console.log("El producto no es parte de un paquete");
