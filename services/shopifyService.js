@@ -162,18 +162,16 @@ async function contenidoEnPaquete(productId, bundleType = null) {
       (producto) => producto.producto.id
     );
     if (productosIds.includes(productId)) {
-      return true; // El producto está en el ramo
+      return true;
     }
   }
-  return false; // El producto no está en ningún ramo
+  return false;
 }
 
 async function procesarProducto(productId) {
   const producto = await getProductById(productId);
 
-  // obtener los bundles que contienen el producto
   const bundles = await obtenerBundlesContienenProducto(productId);
-  // listar los titulos de los bundles
   for (let bundle of bundles) {
     console.log("El producto", producto.title, "está en el ramo", bundle.title);
   }
