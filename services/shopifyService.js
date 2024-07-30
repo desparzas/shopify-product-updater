@@ -14,7 +14,8 @@ async function retryWithBackoff(fn, retries = 10, delay = 1000) {
   try {
     return await fn();
   } catch (error) {
-    if (error.response.statusCode === 429 && retries > 0) {
+    if (error.response && error.response.statusCode === 429 && retries > 0) {
+      // console.log("Rate limited, retrying in", delay, "ms");
       await new Promise((resolve) => setTimeout(resolve, delay));
       return retryWithBackoff(fn, retries - 1, delay * 2);
     } else {
@@ -24,31 +25,37 @@ async function retryWithBackoff(fn, retries = 10, delay = 1000) {
 }
 
 async function listProducts() {
-  return await shopify.product.list();
+  return await retryWithBackoff(() => shopify.product.list());
 }
 
 async function getProductById(id) {
-  return await shopify.product.get(id);
+  return await retryWithBackoff(() => shopify.product.get(id));
 }
 
 async function getProductMetafields(productId) {
-  return await shopify.metafield.list({
-    metafield: { owner_resource: "product", owner_id: productId },
-  });
+  return await retryWithBackoff(() =>
+    shopify.metafield.list({
+      metafield: { owner_resource: "product", owner_id: productId },
+    })
+  );
 }
 
 async function getProductCustomMetafields(productId) {
-  return await shopify.metafield.list({
-    metafield: {
-      owner_resource: "product",
-      owner_id: productId,
-      namespace: "custom",
-    },
-  });
+  return await retryWithBackoff(() =>
+    shopify.metafield.list({
+      metafield: {
+        owner_resource: "product",
+        owner_id: productId,
+        namespace: "custom",
+      },
+    })
+  );
 }
 
 async function getProductByProductType(productType) {
-  return await shopify.product.list({ product_type: productType });
+  return await retryWithBackoff(() =>
+    shopify.product.list({ product_type: productType })
+  );
 }
 
 async function getProductosFromProducto(id) {
@@ -122,8 +129,6 @@ async function obtenerBundlesContienenProducto(productId, bundleType = null) {
 async function tieneProductos(id) {
   try {
     const metafields = await getProductMetafields(id);
-    // console.log("Metafields", metafields);
-
     if (!metafields.length) return false;
 
     for (let i = 1; i <= 20; i++) {
@@ -169,12 +174,48 @@ async function contenidoEnPaquete(productId, bundleType = null) {
 }
 
 async function procesarProducto(productId) {
-  const producto = await getProductById(productId);
+  const id = parseInt(productId, 10);
+  const producto = await getProductById(id);
+  const bundles = await obtenerBundlesContienenProducto(id);
 
-  const bundles = await obtenerBundlesContienenProducto(productId);
-  for (let bundle of bundles) {
+  bundles.forEach((bundle) => {
     console.log("El producto", producto.title, "está en el ramo", bundle.title);
-  }
+  });
+
+  // Filtrar bundles simples
+  const bundlesSimples = bundles.filter(
+    (bundle) =>
+      bundle.productos.every(
+        (producto) => producto.producto.variants.length === 1
+      ) && bundle.variants.length === 1
+  );
+
+  // Calcular actualizaciones
+  const actualizaciones = bundlesSimples.map(async (bundle) => {
+    // Calcular el nuevo precio del ramo
+    const precioRamo = bundle.productos
+      .reduce((total, producto) => {
+        const precioProducto = parseFloat(producto.producto.variants[0].price);
+        return total + precioProducto * producto.cantidad;
+      }, 0)
+      .toFixed(2);
+
+    // Verificar si se requiere actualización
+    if (precioRamo !== bundle.variants[0].price) {
+      console.log(
+        `Actualizado el precio del ramo ${bundle.title} a ${precioRamo} de ${bundle.variants[0].price} a ${precioRamo}`
+      );
+
+      // Actualizar precio en Shopify
+      await shopify.productVariant.update(bundle.variants[0].id, {
+        price: precioRamo,
+      });
+    }
+  });
+
+  // Esperar que todas las actualizaciones se completen
+  await Promise.all(actualizaciones);
+
   return null;
 }
 
