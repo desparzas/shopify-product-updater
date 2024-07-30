@@ -7,6 +7,7 @@ const shopify = new Shopify({
   shopName: SHOP,
   apiKey: SHOPIFY_API_KEY,
   password: ACCESS_TOKEN,
+  autoLimit: true,
 });
 
 async function retryWithBackoff(fn, retries = 10, delay = 1000) {
@@ -24,45 +25,31 @@ async function retryWithBackoff(fn, retries = 10, delay = 1000) {
 }
 
 async function listProducts() {
-  return retryWithBackoff(async () => {
-    const products = await shopify.product.list();
-    for (let product of products) {
-      product.metafields = await getProductCustomMetafields(product.id);
-    }
-    return products;
-  });
+  return await shopify.product.list();
 }
 
 async function getProductById(id) {
-  return retryWithBackoff(async () => {
-    return await shopify.product.get(id);
-  });
+  return await shopify.product.get(id);
 }
 
 async function getProductMetafields(productId) {
-  return retryWithBackoff(async () => {
-    return await shopify.metafield.list({
-      metafield: { owner_resource: "product", owner_id: productId },
-    });
+  return await shopify.metafield.list({
+    metafield: { owner_resource: "product", owner_id: productId },
   });
 }
 
 async function getProductCustomMetafields(productId) {
-  return retryWithBackoff(async () => {
-    return await shopify.metafield.list({
-      metafield: {
-        owner_resource: "product",
-        owner_id: productId,
-        namespace: "custom",
-      },
-    });
+  return await shopify.metafield.list({
+    metafield: {
+      owner_resource: "product",
+      owner_id: productId,
+      namespace: "custom",
+    },
   });
 }
 
 async function getProductByProductType(productType) {
-  return retryWithBackoff(async () => {
-    return await shopify.product.list({ product_type: productType });
-  });
+  return await shopify.product.list({ product_type: productType });
 }
 
 async function getProductosFromProducto(id) {
@@ -108,18 +95,16 @@ async function getProductosFromProducto(id) {
 }
 
 async function obtenerBundlesContienenProducto(productId, bundleType) {
-  return retryWithBackoff(async () => {
-    let ramos = await getProductByProductType(bundleType);
-    ramos = await Promise.all(
-      ramos.map(async (ramo) => {
-        ramo.productos = await getProductosFromProducto(ramo.id);
-        return ramo;
-      })
-    );
-    return ramos.filter((ramo) =>
-      ramo.productos.some((producto) => producto.producto.id === productId)
-    );
-  });
+  let ramos = await getProductByProductType(bundleType);
+  ramos = await Promise.all(
+    ramos.map(async (ramo) => {
+      ramo.productos = await getProductosFromProducto(ramo.id);
+      return ramo;
+    })
+  );
+  return ramos.filter((ramo) =>
+    ramo.productos.some((producto) => producto.producto.id === productId)
+  );
 }
 
 async function tieneProductos(id) {
@@ -187,11 +172,9 @@ async function actualizarRamosSimplesDeProducto(productId) {
           `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo} de ${ramo.variants[0].price} a ${precioRamoNuevo}`
         );
 
-        await retryWithBackoff(() =>
-          shopify.productVariant.update(ramo.variants[0].id, {
-            price: precioRamoNuevo,
-          })
-        );
+        await shopify.productVariant.update(ramo.variants[0].id, {
+          price: precioRamoNuevo,
+        });
       }
     });
 
@@ -265,9 +248,7 @@ async function actualizarGlobosNumeradosDeProducto(productId) {
       }
 
       if (variantsUpdated) {
-        await retryWithBackoff(() =>
-          shopify.product.update(globo.id, { variants: variantsTemp })
-        );
+        await shopify.product.update(globo.id, { variants: variantsTemp });
       }
     });
 
@@ -360,9 +341,7 @@ async function actualizarRamosDoblesNumeradosDeProducto(productId) {
         }
       }
       if (variantsUpdated) {
-        await retryWithBackoff(() =>
-          shopify.product.update(globo.id, { variants: variantsTemp })
-        );
+        await shopify.product.update(globo.id, { variants: variantsTemp });
       }
     });
 
@@ -374,21 +353,23 @@ async function actualizarRamosDoblesNumeradosDeProducto(productId) {
   }
 }
 
-async function contenidoEnPaquete(productId, bundleType) {
-  return retryWithBackoff(async () => {
+async function contenidoEnPaquete(productId, bundleType = null) {
+  if (!bundleType) {
+    const ramos = await listProducts();
+  } else {
     const ramos = await getProductByProductType(bundleType);
-    for (let ramo of ramos) {
-      // console.log("Buscando en el ramo", ramo.title);
-      const productosEnRamo = await getProductosFromProducto(ramo.id);
-      const productosIds = productosEnRamo.map(
-        (producto) => producto.producto.id
-      );
-      if (productosIds.includes(productId)) {
-        return true; // El producto está en el ramo
-      }
+  }
+  for (let ramo of ramos) {
+    // console.log("Buscando en el ramo", ramo.title);
+    const productosEnRamo = await getProductosFromProducto(ramo.id);
+    const productosIds = productosEnRamo.map(
+      (producto) => producto.producto.id
+    );
+    if (productosIds.includes(productId)) {
+      return true; // El producto está en el ramo
     }
-    return false; // El producto no está en ningún ramo
-  });
+  }
+  return false; // El producto no está en ningún ramo
 }
 
 module.exports = {
