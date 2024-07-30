@@ -9,11 +9,9 @@ function verifyHMAC(req, res, next) {
     .createHmac("sha256", config.WEBHOOK_SECRET)
     .update(req.body, "utf8", "hex")
     .digest("base64");
-
   if (hash !== hmac) {
     return res.status(401).send("Unauthorized");
   }
-
   next();
 }
 
@@ -21,12 +19,8 @@ function verifyHMAC(req, res, next) {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    console.log(
-      "Procesando webhook para el producto ",
-      productData.id,
-      "-",
-      productData.title
-    );
+    const { id, title } = productData;
+    console.log("Procesando webhook para el producto", id, "-", title);
     if (processedProducts.has(productData.id)) {
       return res.status(200).send("Evento ya procesado recientemente.");
     }
@@ -34,7 +28,16 @@ async function handleProductUpdate(req, res) {
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 120000);
 
-    console.log("Webhook procesado para el producto ", productData.title);
+    const contenidoenBundle = shopifyService.contenidoEnPaquete(id);
+
+    if (contenidoenBundle) {
+      console.log("El producto es parte de un paquete");
+      return res.status(200).send("Producto es parte de un paquete");
+    } else {
+      console.log("El producto no es parte de un paquete");
+    }
+
+    console.log("Webhook procesado para el producto", productData.title);
     return res.status(200).send("Webhook recibido");
   } catch (error) {
     console.error("Error handling product update webhook:", error);
