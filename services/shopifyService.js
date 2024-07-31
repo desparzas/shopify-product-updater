@@ -227,26 +227,23 @@ async function procesarProducto(productId) {
   // Esperar que todas las actualizaciones se completen
   await Promise.all(actualizaciones);
 
-  // validar limites de cada bundle
+  // Validar límites de cada bundle
   for (let bundle of complementoBundlesSimples) {
     console.log("_".repeat(50));
-    console.log("Validando limites del ramo", bundle.title);
+    console.log("Validando límites del ramo", bundle.title);
     const valido = bundleValido(bundle);
     console.log("_".repeat(50));
     if (valido) {
       console.log("El ramo", bundle.title, "es válido");
-      // Se pueden generar las variantes
 
       // Calcular las variantes
-      const variantes = calcularVariantes(bundle.productos);
+      const { variantes, options } = calcularVariantes(bundle.productos);
 
       // Guardar las variantes en un archivo
       fs.writeFileSync(
         `./test/variantes${bundle.title}.json`,
-        JSON.stringify(variantes, null, 2)
+        JSON.stringify({ variantes, options }, null, 2)
       );
-
-      // Actualizar las variantes en Shopify
     }
   }
 
@@ -307,6 +304,40 @@ function bundleValido(bundle) {
 }
 
 function calcularVariantes(productos) {
+  // Generar las opciones posibles del bundle
+  let position = 1;
+  let options = [];
+  const nameCounts = {};
+
+  const productosOpcionesValidas = productos.filter(
+    ({ producto }) =>
+      producto.options.length > 1 ||
+      (producto.options.length === 1 && producto.options[0].name !== "Title")
+  );
+
+  for (const { producto: p } of productosOpcionesValidas) {
+    const opciones = p.options.map((option) => {
+      const name = option.name;
+
+      // Incrementar el contador para el nombre de la opción
+      if (!nameCounts[name]) {
+        nameCounts[name] = 0;
+      }
+      nameCounts[name]++;
+
+      // Crear el nombre de la opción con un sufijo
+      const uniqueName = `${name} ${nameCounts[name]}`;
+
+      return {
+        position: position++,
+        name: uniqueName,
+        values: option.values,
+      };
+    });
+
+    options = [...options, ...opciones];
+  }
+
   // Generar todas las combinaciones de variantes
   const generarCombinaciones = (listas) => {
     if (listas.length === 0) return [[]];
@@ -345,45 +376,23 @@ function calcularVariantes(productos) {
       }, 0)
       .toFixed(2);
 
+    // Asignar opciones (option1, option2, option3)
+    const opcionesAsignadas = combinacion.filter((opcion) => opcion !== null);
+    const [option1, option2, option3] = [
+      opcionesAsignadas[0] || null,
+      opcionesAsignadas[1] || null,
+      opcionesAsignadas[2] || null,
+    ];
+
     return {
       title,
-      price: price,
+      price,
+      option1,
+      option2,
+      option3,
     };
   });
 
-  // Generar las opciones posibles del bundle
-  let position = 1;
-  let options = [];
-  const nameCounts = {};
-
-  const productosOpcionesValidas = productos.filter(
-    ({ producto }) =>
-      producto.options.length > 1 ||
-      (producto.options.length === 1 && producto.options[0].name !== "Title")
-  );
-
-  for (const { producto: p } of productosOpcionesValidas) {
-    const opciones = p.options.map((option) => {
-      const name = option.name;
-
-      // Incrementar el contador para el nombre de la opción
-      if (!nameCounts[name]) {
-        nameCounts[name] = 0;
-      }
-      nameCounts[name]++;
-
-      // Crear el nombre de la opción con un sufijo
-      const uniqueName = `${name} ${nameCounts[name]}`;
-
-      return {
-        position: position++,
-        name: uniqueName,
-        values: option.values,
-      };
-    });
-
-    options = [...options, ...opciones];
-  }
   return {
     variantes,
     options,
