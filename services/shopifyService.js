@@ -217,10 +217,12 @@ async function procesarProducto(productId) {
         `Actualizado el precio del ramo ${bundle.title} a ${precioRamo} de ${bundle.variants[0].price} a ${precioRamo}`
       );
 
-      // Actualizar precio en Shopify
-      await shopify.productVariant.update(bundle.variants[0].id, {
-        price: precioRamo,
-      });
+      // Actualizar precio en Shopify con reintento
+      await retryWithBackoff(() =>
+        shopify.productVariant.update(bundle.variants[0].id, {
+          price: precioRamo,
+        })
+      );
     }
   });
 
@@ -232,19 +234,17 @@ async function procesarProducto(productId) {
     console.log("_".repeat(50));
     console.log("Validando límites del ramo", bundle.title);
     const valido = bundleValido(bundle);
-    console.log("_".repeat(50));
     if (valido) {
       console.log("El ramo", bundle.title, "es válido");
 
       // Calcular las variantes
       const { variantes, options } = calcularVariantes(bundle.productos);
 
-      // Guardar las variantes en un archivo
-      fs.writeFileSync(
-        `./test/variantes${bundle.title}.json`,
-        JSON.stringify({ variantes, options }, null, 2)
+      await retryWithBackoff(() =>
+        shopify.product.update(bundle.id, { variants: variantes })
       );
     }
+    console.log("_".repeat(50));
   }
 
   return null;
@@ -326,7 +326,7 @@ function calcularVariantes(productos) {
       nameCounts[name]++;
 
       // Crear el nombre de la opción con un sufijo
-      const uniqueName = `${name} ${nameCounts[name]}`;
+      const uniqueName = `${name}_${nameCounts[name]}`;
 
       return {
         position: position++,

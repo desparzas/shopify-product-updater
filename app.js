@@ -13,12 +13,7 @@ app.use(cors());
 app.use(bodyParser.raw({ type: "application/json" }));
 
 app.use((req, res, next) => {
-  // console.log("Headers de la petición:", req.headers);
-  // const parsed_body = JSON.parse(req.body);
-  // console.log("Cuerpo de la petición:", parsed_body);
-
-  // Si buscas el HMAC, asumiendo que viene en los headers
-  const hmac = req.headers["x-shopify-hmac-sha256"]; // Cambia según el nombre del header
+  const hmac = req.headers["x-shopify-hmac-sha256"];
   next();
 });
 
