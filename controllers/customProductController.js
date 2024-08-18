@@ -1,7 +1,21 @@
+const { parse } = require("dotenv");
+const { getProductById } = require("../services/shopifyService");
+
+function extractNumber(title) {
+  const match = title.match(/(\d+)/); // Busca números en el título
+  return match ? parseInt(match[1], 10) : null; // Devuelve el número o null si no se encuentra
+}
 const testProduct = async (req, res) => {
   try {
-    // IMPRIMIR EL CUERPO DE LA PETICIÓN
-    // parsear el cuerpo de la petición
+    const globosRedondos = {
+      blanco: "9596621488412",
+      azul: "9579162534172",
+    };
+
+    const globosNumerados = {
+      azul: "9579069505820",
+    };
+
     const body = JSON.parse(req.body.toString());
 
     console.log("Cuerpo de la petición:", body);
@@ -11,12 +25,64 @@ const testProduct = async (req, res) => {
     const segundoNumero = body.segundoNumero;
     const coloresLatex = body.coloresLatex;
 
+    let precioPrimerNumero = 0;
+    let precioSegundoNumero = 0;
+
+    if (globosNumerados[colorNumero]) {
+      const globoNumerado = await getProductById(globosNumerados[colorNumero]);
+      for (const variant of globoNumerado.variants) {
+        const numero = extractNumber(variant.title);
+        console.log("Número:", numero);
+        if (numero == primerNumero) {
+          console.log("Encontré la variante del primer número");
+          precioPrimerNumero = variant.price;
+        }
+        if (numero == segundoNumero) {
+          console.log("Encontré la variante del segundo número");
+          precioSegundoNumero = variant.price;
+        }
+      }
+    } else {
+      console.log("No se encontró el producto de número");
+    }
+
+    let preciosGlobosLatex = {};
+
+    for (const color of coloresLatex) {
+      console.log("Color de globo de látex:", color);
+      const globoRedondo = await getProductById(globosRedondos[color]);
+      if (globoRedondo) {
+        preciosGlobosLatex[color] = globoRedondo.variants[0].price;
+      } else {
+        preciosGlobosLatex[color] = 0;
+      }
+    }
+
+    if (precioPrimerNumero == 0 || precioSegundoNumero == 0) {
+      console.log("No se encontraron los precios de los números");
+      throw new Error("No se encontraron los precios de los números");
+    }
+
+    for (const color of coloresLatex) {
+      if (preciosGlobosLatex[color] == 0) {
+        console.log("No se encontró el precio de un globo de látex");
+        throw new Error("No se encontró el precio de un globo de látex");
+      }
+    }
+
+    // calcular precio total
+
+    let precioTotal =
+      parseFloat(precioPrimerNumero) + parseFloat(precioSegundoNumero);
+
+    for (const color of coloresLatex) {
+      precioTotal += parseFloat(preciosGlobosLatex[color]);
+    }
+
+    console.log("Precio total:", precioTotal);
     data = {};
     res.json({
-      colorNumero,
-      primerNumero,
-      segundoNumero,
-      coloresLatex,
+      precioTotal,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
