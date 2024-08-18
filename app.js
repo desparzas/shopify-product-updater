@@ -4,6 +4,7 @@ const cors = require("cors");
 const morgan = require("morgan");
 const productRoutes = require("./routes/productRoutes");
 const webhookRoutes = require("./routes/webhookRoutes");
+const customProductRoutes = require("./routes/customProductRoutes");
 // create express app
 const app = express();
 
@@ -24,5 +25,6 @@ app.use((req, res, next) => {
 
 app.use("/api", productRoutes);
 app.use("/webhooks", webhookRoutes);
+app.use("/custom-products", customProductRoutes);
 
 module.exports = app;
