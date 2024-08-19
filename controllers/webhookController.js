@@ -17,6 +17,19 @@ function verifyHMAC(req, res, next) {
   next();
 }
 
+async function handleOrderCreate(req, res) {
+  try {
+    const orderData = JSON.parse(req.body);
+
+    console.log(JSON.stringify(orderData, null, 2));
+
+    return res.status(200).send("Webhook recibido");
+  } catch (error) {
+    console.error("Error handling order create webhook:", error);
+    res.status(500).send("Internal Server Error");
+  }
+}
+
 // Endpoint para recibir el webhook
 async function handleProductUpdate(req, res) {
   try {
@@ -108,4 +121,5 @@ async function handleProductUpdate(req, res) {
 module.exports = {
   verifyHMAC,
   handleProductUpdate,
+  handleOrderCreate,
 };
