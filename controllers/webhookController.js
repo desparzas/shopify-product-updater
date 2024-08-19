@@ -73,11 +73,14 @@ async function handleOrderCreate(req, res) {
             "Nuevo inventario del primer número:",
             nuevoInventarioPrimerNumero
           );
-
-          await shopifyService.actualizarInventario(
-            variant.id,
-            nuevoInventarioPrimerNumero
-          );
+          if (nuevoInventarioPrimerNumero < 0) {
+            console.log("Inventario insuficiente para el primer número");
+          } else {
+            await shopifyService.actualizarInventario(
+              variant.id,
+              nuevoInventarioPrimerNumero
+            );
+          }
         }
         if (numero === extSegundoNumero) {
           console.log("Encontré la variante del segundo número");
@@ -98,46 +101,54 @@ async function handleOrderCreate(req, res) {
             nuevoInventarioSegundoNumero
           );
 
-          await shopifyService.actualizarInventario(
-            variant.id,
-            nuevoInventarioSegundoNumero
-          );
+          if (nuevoInventarioSegundoNumero < 0) {
+            console.log("Inventario insuficiente para el segundo número");
+          } else {
+            await shopifyService.actualizarInventario(
+              variant.id,
+              nuevoInventarioSegundoNumero
+            );
+          }
         }
       }
 
       // GLOBOS DE LATEX
 
-      // if (coloresLatex.length === 0) {
-      //   console.log("El producto no tiene colores de látex");
-      //   continue;
-      // }
+      if (coloresLatex.length === 0) {
+        console.log("El producto no tiene colores de látex");
+        continue;
+      }
 
-      // for (const color of coloresLatex) {
-      //   const globoRedondoId = globosRedondos[color];
-      //   const globoRedondo = await shopifyService.getProductById(
-      //     globoRedondoId
-      //   );
-      //   const globoRedondoVariantes = globoRedondo.variants;
+      for (const color of coloresLatex) {
+        const globoRedondoId = globosRedondos[color];
+        const globoRedondo = await shopifyService.getProductById(
+          globoRedondoId
+        );
+        const globoRedondoVariantes = globoRedondo.variants;
 
-      //   for (const variant of globoRedondoVariantes) {
-      //     const precioGloboRedondo = variant.price;
-      //     console.log("Precio del globo redondo:", precioGloboRedondo);
+        for (const variant of globoRedondoVariantes) {
+          const precioGloboRedondo = variant.price;
+          console.log("Precio del globo redondo:", precioGloboRedondo);
 
-      //     const inventarioGloboRedondo = variant.inventory_quantity;
-      //     console.log("Inventario del globo redondo:", inventarioGloboRedondo);
+          const inventarioGloboRedondo = variant.inventory_quantity;
+          console.log("Inventario del globo redondo:", inventarioGloboRedondo);
 
-      //     const nuevoInventarioGloboRedondo = inventarioGloboRedondo - quantity;
-      //     console.log(
-      //       "Nuevo inventario del globo redondo:",
-      //       nuevoInventarioGloboRedondo
-      //     );
+          const nuevoInventarioGloboRedondo = inventarioGloboRedondo - quantity;
+          console.log(
+            "Nuevo inventario del globo redondo:",
+            nuevoInventarioGloboRedondo
+          );
 
-      //     await shopifyService.actualizarInventario(
-      //       variant.id,
-      //       nuevoInventarioGloboRedondo
-      //     );
-      //   }
-      // }
+          if (nuevoInventarioGloboRedondo < 0) {
+            console.log("Inventario insuficiente para el globo redondo");
+          } else {
+            await shopifyService.actualizarInventario(
+              variant.id,
+              nuevoInventarioGloboRedondo
+            );
+          }
+        }
+      }
     }
 
     console.log(JSON.stringify(orderData, null, 2));
