@@ -23,6 +23,40 @@ async function retryWithBackoff(fn, retries = 10, delay = 1000) {
   }
 }
 
+async function searchProductByTitle(title) {
+  return retryWithBackoff(async () => {
+    const products = await shopify.product.list({ title });
+    return products;
+  });
+}
+
+async function createProduct(product) {
+  const { title, price } = product;
+
+  const newProduct = {
+    title,
+    body_html: "",
+    vendor: "Mis Globos",
+    product_type: "Ramo Creado",
+    variants: [
+      {
+        price,
+        option1: "Default Title",
+      },
+    ],
+  };
+
+  return retryWithBackoff(async () => {
+    return await shopify.product.create(newProduct);
+  });
+}
+
+async function actualizarVarianteProducto(productoId, variantId, price) {
+  return retryWithBackoff(async () => {
+    return await shopify.productVariant.update(variantId, { price });
+  });
+}
+
 async function listProducts() {
   return retryWithBackoff(async () => {
     const products = await shopify.product.list();
@@ -404,4 +438,7 @@ module.exports = {
   tieneProductos,
   getProductCustomMetafields,
   actualizarRamosDoblesNumeradosDeProducto,
+  createProduct,
+  searchProductByTitle,
+  actualizarVarianteProducto,
 };

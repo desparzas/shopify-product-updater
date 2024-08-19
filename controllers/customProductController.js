@@ -1,5 +1,9 @@
-const { parse } = require("dotenv");
-const { getProductById } = require("../services/shopifyService");
+const {
+  getProductById,
+  createProduct,
+  searchProductByTitle,
+  actualizarVarianteProducto,
+} = require("../services/shopifyService");
 
 function extractNumber(title) {
   const match = title.match(/(\d+)/); // Busca números en el título
@@ -79,10 +83,47 @@ const testProduct = async (req, res) => {
       precioTotal += parseFloat(preciosGlobosLatex[color]);
     }
 
+    // crear un nuevo producto, el title es el color del globo
+    const colores_globo = coloresLatex.join(", ");
+    const title = `Ramo número ${primerNumero}${segundoNumero} ${colorNumero} con globos de látex color ${colores_globo}`;
+    const productData = {
+      title,
+      price: precioTotal,
+    };
+    const existingProductList = await searchProductByTitle(title);
+
+    let existingProduct = null;
+    if (existingProductList.length > 0) {
+      existingProduct = existingProductList[0];
+    }
+
+    let newProduct = null;
+
+    if (existingProduct) {
+      const variant = existingProduct.variants[0];
+
+      console.log("El producto ya existe");
+      await actualizarVarianteProducto(
+        existingProduct.id,
+        variant.id,
+        precioTotal
+      );
+    } else {
+      console.log("El producto no existe");
+      newProduct = await createProduct(productData);
+    }
+
+    console.log("Título:", title);
     console.log("Precio total:", precioTotal);
+    console.log(
+      "ID del producto:",
+      newProduct ? newProduct.id : existingProduct.id
+    );
     data = {};
     res.json({
       precioTotal,
+      title,
+      id: newProduct ? newProduct.id : existingProduct.id,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
