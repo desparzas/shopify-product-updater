@@ -5,21 +5,11 @@ const {
   actualizarVarianteProducto,
 } = require("../services/shopifyService");
 
-function extractNumber(title) {
-  const match = title.match(/(\d+)/); // Busca números en el título
-  return match ? parseInt(match[1], 10) : null; // Devuelve el número o null si no se encuentra
-}
+const { globosNumerados, globosRedondos } = require("../utils/consts");
+const { extractNumber } = require("../utils/config");
+
 const testProduct = async (req, res) => {
   try {
-    const globosRedondos = {
-      blanco: "9596621488412",
-      azul: "9579162534172",
-    };
-
-    const globosNumerados = {
-      azul: "9579069505820",
-    };
-
     const body = JSON.parse(req.body.toString());
 
     console.log("Cuerpo de la petición:", body);

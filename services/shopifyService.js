@@ -425,6 +425,14 @@ async function contenidoEnPaquete(productId, bundleType) {
   });
 }
 
+async function actualizarInventario(productId, inventory) {
+  return retryWithBackoff(async () => {
+    return await shopify.productVariant.update(productId, {
+      inventory_quantity: inventory,
+    });
+  });
+}
+
 module.exports = {
   listProducts,
   getProductById,
@@ -441,4 +449,5 @@ module.exports = {
   createProduct,
   searchProductByTitle,
   actualizarVarianteProducto,
+  actualizarInventario,
 };

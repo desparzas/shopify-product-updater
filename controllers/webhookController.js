@@ -1,6 +1,8 @@
 const config = require("../utils/config");
 const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
+const { globosNumerados, globosRedondos } = require("../utils/consts");
+const { extractNumber } = require("../utils/config");
 const processedProducts = new Set();
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
@@ -20,6 +22,123 @@ function verifyHMAC(req, res, next) {
 async function handleOrderCreate(req, res) {
   try {
     const orderData = JSON.parse(req.body);
+    for (const orderItem of orderData.line_items) {
+      const { id, properties, quantity, title, product_id } = orderItem;
+
+      console.log(`Procesando producto ${title} en la orden ${orderData.name}`);
+
+      if (properties.length === 0) {
+        console.log("El producto no tiene propiedades");
+        continue;
+      }
+
+      const colorNumero = properties.find(
+        (property) => property.name === "Color del Globo de Número"
+      )?.value;
+
+      const primerNumero = properties.find(
+        (property) => property.name === "Primer Número del Globo"
+      )?.value;
+
+      const segundoNumero = properties.find(
+        (property) => property.name === "Segundo Número del Globo"
+      )?.value;
+
+      const coloresLatex = properties.find(
+        (property) => property.name === "Colores del Globo de Látex"
+      )?.value;
+
+      if (!(colorNumero && primerNumero && segundoNumero && coloresLatex)) {
+      }
+      // GLOBO DE NUMERO
+      const globoNumeradoId = globosNumerados[colorNumero];
+      const globoNumerado = await shopifyService.getProductById(
+        globoNumeradoId
+      );
+      const globoNumeradoVariantes = globoNumerado.variants;
+
+      for (const variant of globoNumeradoVariantes) {
+        const numero = extractNumber(variant.title);
+        const extPrimerNumero = extractNumber(primerNumero);
+        const extSegundoNumero = extractNumber(segundoNumero);
+        if (numero === extPrimerNumero) {
+          console.log("Encontré la variante del primer número");
+          const precioPrimerNumero = variant.price;
+          console.log("Precio del primer número:", precioPrimerNumero);
+          const inventarioPrimerNumero = variant.inventory_quantity;
+          console.log("Inventario del primer número:", inventarioPrimerNumero);
+          const nuevoInventarioPrimerNumero = inventarioPrimerNumero - quantity;
+
+          console.log(
+            "Nuevo inventario del primer número:",
+            nuevoInventarioPrimerNumero
+          );
+
+          await shopifyService.actualizarInventario(
+            variant.id,
+            nuevoInventarioPrimerNumero
+          );
+        }
+        if (numero === extSegundoNumero) {
+          console.log("Encontré la variante del segundo número");
+          const precioSegundoNumero = variant.price;
+          console.log("Precio del segundo número:", precioSegundoNumero);
+
+          const inventarioSegundoNumero = variant.inventory_quantity;
+          console.log(
+            "Inventario del segundo número:",
+            inventarioSegundoNumero
+          );
+
+          const nuevoInventarioSegundoNumero =
+            inventarioSegundoNumero - quantity;
+
+          console.log(
+            "Nuevo inventario del segundo número:",
+            nuevoInventarioSegundoNumero
+          );
+
+          await shopifyService.actualizarInventario(
+            variant.id,
+            nuevoInventarioSegundoNumero
+          );
+        }
+      }
+
+      // GLOBOS DE LATEX
+
+      // if (coloresLatex.length === 0) {
+      //   console.log("El producto no tiene colores de látex");
+      //   continue;
+      // }
+
+      // for (const color of coloresLatex) {
+      //   const globoRedondoId = globosRedondos[color];
+      //   const globoRedondo = await shopifyService.getProductById(
+      //     globoRedondoId
+      //   );
+      //   const globoRedondoVariantes = globoRedondo.variants;
+
+      //   for (const variant of globoRedondoVariantes) {
+      //     const precioGloboRedondo = variant.price;
+      //     console.log("Precio del globo redondo:", precioGloboRedondo);
+
+      //     const inventarioGloboRedondo = variant.inventory_quantity;
+      //     console.log("Inventario del globo redondo:", inventarioGloboRedondo);
+
+      //     const nuevoInventarioGloboRedondo = inventarioGloboRedondo - quantity;
+      //     console.log(
+      //       "Nuevo inventario del globo redondo:",
+      //       nuevoInventarioGloboRedondo
+      //     );
+
+      //     await shopifyService.actualizarInventario(
+      //       variant.id,
+      //       nuevoInventarioGloboRedondo
+      //     );
+      //   }
+      // }
+    }
 
     console.log(JSON.stringify(orderData, null, 2));
 
