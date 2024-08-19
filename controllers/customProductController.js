@@ -6,7 +6,7 @@ const {
 } = require("../services/shopifyService");
 
 const { globosNumerados, globosRedondos } = require("../utils/consts");
-const { extractNumber } = require("../utils/config");
+const { extractNumber } = require("../utils/functions");
 
 const testProduct = async (req, res) => {
   try {

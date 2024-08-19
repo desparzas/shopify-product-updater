@@ -2,7 +2,7 @@ const config = require("../utils/config");
 const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
 const { globosNumerados, globosRedondos } = require("../utils/consts");
-const { extractNumber } = require("../utils/config");
+const { extractNumber } = require("../utils/functions");
 const processedProducts = new Set();
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
