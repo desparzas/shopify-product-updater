@@ -119,11 +119,18 @@ const testProduct = async (req, res) => {
       "ID del producto:",
       newProduct ? newProduct.id : existingProduct.id
     );
+
+    // obtener el id de la variante del producto
+
+    const idVariante = newProduct
+      ? newProduct.variants[0].id
+      : existingProduct.variants[0].id;
     data = {};
     res.json({
       precioTotal,
       title,
       id: newProduct ? newProduct.id : existingProduct.id,
+      idVariante,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
