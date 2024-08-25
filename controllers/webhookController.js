@@ -177,13 +177,13 @@ async function handleProductUpdate(req, res) {
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 120000);
 
-    const tieneProductos = await shopifyService.tieneProductos(productData.id);
-    if (tieneProductos) {
-      console.log(
-        `El producto ${productData.title} tiene productos, no se procesará`
-      );
-      return res.status(200).send("El producto tiene productos");
-    }
+    // const tieneProductos = await shopifyService.tieneProductos(productData.id);
+    // if (tieneProductos) {
+    //   console.log(
+    //     `El producto ${productData.title} tiene productos, no se procesará`
+    //   );
+    //   return res.status(200).send("El producto tiene productos");
+    // }
 
     await shopifyService.actualizarBundlesDeProducto(productData.id);
 
