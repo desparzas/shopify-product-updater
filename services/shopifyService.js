@@ -216,7 +216,7 @@ async function iniciarEntorno() {
 }
 
 async function createCustomProductTest(product) {
-  const { title, price } = product;
+  const { title, price, published_scope } = product;
 
   const newProduct = {
     title,
@@ -229,6 +229,7 @@ async function createCustomProductTest(product) {
         option1: "Default Title",
       },
     ],
+    published_scope,
   };
 
   return retryWithBackoff(async () => {
@@ -544,7 +545,7 @@ async function actualizarBundlesDeProducto(productId) {
           precioTotal += cantidad * precio;
         }
 
-        console.log("ACTUAL - NUEVO", precioActual, precioTotal);
+        console.log("ACTUALIZANDO: ", precioActual, "-->", precioTotal);
 
         if (precioTotal !== precioActual) {
           console.log("Actualizando el precio del bundle");
@@ -555,9 +556,23 @@ async function actualizarBundlesDeProducto(productId) {
           });
         }
       } else {
-        const { variants, options } = bundle;
+        // const { variants, options } = bundle;
         if (options.length === 1) {
           console.log("El bundle tiene una opción");
+          for (const variant of variants) {
+            const { option1 } = variant;
+
+            // buscar en la lista de productos el producto que coincida con la opción
+            const producto = productos.find((producto) => {
+              const { variants } = producto;
+              const encontradoVariant = variants.find(
+                (v) => v.option1 === option1
+              );
+              return encontradoVariant;
+            });
+            console.log("Nombre de la variante del paquete:", option1);
+            console.log("Producto con opción encontrado:", producto.title);
+          }
         } else if (options.length === 2) {
           console.log("El bundle tiene dos opciones");
         } else if (options.length === 3) {

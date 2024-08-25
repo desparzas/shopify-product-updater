@@ -93,6 +93,7 @@ const testProduct = async (req, res) => {
     const productData = {
       title,
       price: precioTotal,
+      published_scope: "web",
     };
 
     const dataExtra = {
