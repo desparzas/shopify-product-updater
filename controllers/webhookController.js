@@ -1,7 +1,7 @@
 const config = require("../utils/config");
 const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
-const { globosNumerados, globosRedondos } = require("../utils/consts");
+const { globosNumerados, globosLatex } = require("../utils/products");
 const { extractNumber } = require("../utils/functions");
 const processedProducts = new Set();
 // Middleware para validar el HMAC
@@ -76,7 +76,7 @@ async function handleOrderCreate(req, res) {
           if (nuevoInventarioPrimerNumero < 0) {
             console.log("Inventario insuficiente para el primer número");
           } else {
-            await shopifyService.actualizarInventario(
+            await shopifyService.reducirInventario(
               variant.id,
               nuevoInventarioPrimerNumero
             );
@@ -104,7 +104,7 @@ async function handleOrderCreate(req, res) {
           if (nuevoInventarioSegundoNumero < 0) {
             console.log("Inventario insuficiente para el segundo número");
           } else {
-            await shopifyService.actualizarInventario(
+            await shopifyService.reducirInventario(
               variant.id,
               nuevoInventarioSegundoNumero
             );
@@ -120,7 +120,7 @@ async function handleOrderCreate(req, res) {
       }
 
       for (const color of coloresLatex) {
-        const globoRedondoId = globosRedondos[color];
+        const globoRedondoId = globosLatex[color];
         const globoRedondo = await shopifyService.getProductById(
           globoRedondoId
         );
@@ -142,7 +142,7 @@ async function handleOrderCreate(req, res) {
           if (nuevoInventarioGloboRedondo < 0) {
             console.log("Inventario insuficiente para el globo redondo");
           } else {
-            await shopifyService.actualizarInventario(
+            await shopifyService.reducirInventario(
               variant.id,
               nuevoInventarioGloboRedondo
             );

@@ -1,12 +1,16 @@
 const {
   getProductById,
-  createProduct,
+  createCustomProductTest,
   searchProductByTitle,
   actualizarVarianteProducto,
+  searchProductByDataExtra,
+  addDataExtraToProduct,
 } = require("../services/shopifyService");
 
-const { globosNumerados, globosRedondos } = require("../utils/consts");
+const { globosNumerados, globosLatex } = require("../utils/products");
 const { extractNumber } = require("../utils/functions");
+
+const TOTAL_GLOBOS_LATEX = 12;
 
 const testProduct = async (req, res) => {
   try {
@@ -15,114 +19,135 @@ const testProduct = async (req, res) => {
     console.log("Cuerpo de la petición:", body);
 
     const colorNumero = body.colorNumero;
-    const primerNumero = body.primerNumero;
-    const segundoNumero = body.segundoNumero;
+    const primerNumero = parseInt(body.primerNumero);
+    const segundoNumero = parseInt(body.segundoNumero);
     const coloresLatex = body.coloresLatex;
 
-    let precioPrimerNumero = 0;
-    let precioSegundoNumero = 0;
+    let precioPrimerNumero;
+    let idVariantPrimerNumero;
+    let precioSegundoNumero;
+    let idVariantSegundoNumero;
+
+    let dataPrimerNumero;
+    let dataSegundoNumero;
+
+    console.log(globosNumerados);
 
     if (globosNumerados[colorNumero]) {
       const globoNumerado = await getProductById(globosNumerados[colorNumero]);
       for (const variant of globoNumerado.variants) {
-        const numero = extractNumber(variant.title);
-        console.log("Número:", numero);
-        if (numero == primerNumero) {
-          console.log("Encontré la variante del primer número");
+        const numero = parseInt(extractNumber(variant.title));
+        if (numero === primerNumero) {
+          idVariantPrimerNumero = variant.id;
           precioPrimerNumero = variant.price;
         }
-        if (numero == segundoNumero) {
-          console.log("Encontré la variante del segundo número");
+        if (numero === segundoNumero) {
+          idVariantSegundoNumero = variant.id;
           precioSegundoNumero = variant.price;
         }
       }
     } else {
-      console.log("No se encontró el producto de número");
+      throw new Error("No se encontró el producto de número");
     }
 
-    let preciosGlobosLatex = {};
-
-    for (const color of coloresLatex) {
-      console.log("Color de globo de látex:", color);
-      const globoRedondo = await getProductById(globosRedondos[color]);
-      if (globoRedondo) {
-        preciosGlobosLatex[color] = globoRedondo.variants[0].price;
-      } else {
-        preciosGlobosLatex[color] = 0;
-      }
-    }
-
-    if (precioPrimerNumero == 0 || precioSegundoNumero == 0) {
-      console.log("No se encontraron los precios de los números");
+    if (!precioPrimerNumero || !precioSegundoNumero) {
       throw new Error("No se encontraron los precios de los números");
     }
+    console.log("Precio del primer número:", precioPrimerNumero);
+    console.log("Precio del segundo número:", precioSegundoNumero);
+
+    console.log("_".repeat(50));
+
+    let dataGlobosLatex = {};
 
     for (const color of coloresLatex) {
-      if (preciosGlobosLatex[color] == 0) {
-        console.log("No se encontró el precio de un globo de látex");
+      console.log("Color:", color);
+      const globoLatex = await getProductById(globosLatex[color]);
+      if (globoLatex) {
+        dataGlobosLatex[color] = {
+          id: globoLatex.variants[0].id,
+          price: globoLatex.variants[0].price,
+          cantidad: TOTAL_GLOBOS_LATEX / coloresLatex.length,
+        };
+      } else {
         throw new Error("No se encontró el precio de un globo de látex");
       }
     }
-
-    // calcular precio total
 
     let precioTotal =
       parseFloat(precioPrimerNumero) + parseFloat(precioSegundoNumero);
 
     for (const color of coloresLatex) {
-      precioTotal += parseFloat(preciosGlobosLatex[color]);
+      precioTotal +=
+        parseFloat(dataGlobosLatex[color].price) *
+        parseFloat(dataGlobosLatex[color].cantidad);
     }
 
-    // crear un nuevo producto, el title es el color del globo
+    console.log("Precios de los globos de látex:", dataGlobosLatex);
+
+    console.log("Precio total:", precioTotal);
+
     const colores_globo = coloresLatex.join(", ");
     const title = `Ramo número ${primerNumero}${segundoNumero} ${colorNumero} con globos de látex color ${colores_globo}`;
+
     const productData = {
       title,
       price: precioTotal,
     };
+
+    const dataExtra = {
+      idVariantPrimerNumero,
+      idVariantSegundoNumero,
+      precioPrimerNumero,
+      precioSegundoNumero,
+      dataGlobosLatex,
+      colorNumero,
+    };
+
     const existingProductList = await searchProductByTitle(title);
 
-    let existingProduct = null;
+    let existingProduct;
     if (existingProductList.length > 0) {
       existingProduct = existingProductList[0];
     }
 
-    let newProduct = null;
+    let newProduct;
 
     if (existingProduct) {
       const variant = existingProduct.variants[0];
-
       console.log("El producto ya existe");
       await actualizarVarianteProducto(
         existingProduct.id,
         variant.id,
         precioTotal
       );
+      await addDataExtraToProduct(existingProduct.id, dataExtra);
     } else {
       console.log("El producto no existe");
-      newProduct = await createProduct(productData);
+      newProduct = await createCustomProductTest(productData);
+      await addDataExtraToProduct(newProduct.id, dataExtra);
     }
 
-    console.log("Título:", title);
-    console.log("Precio total:", precioTotal);
+    console.log("Datos del producto:", productData);
+    console.log("Datos extra:", dataExtra);
+
     console.log(
       "ID del producto:",
       newProduct ? newProduct.id : existingProduct.id
     );
 
-    // obtener el id de la variante del producto
-
     const idVariante = newProduct
       ? newProduct.variants[0].id
       : existingProduct.variants[0].id;
-    data = {};
-    res.json({
+    const data = {
       precioTotal,
       title,
       id: newProduct ? newProduct.id : existingProduct.id,
       idVariante,
-    });
+    };
+    res.status(200).json(data);
   } catch (error) {
+    console.log("Error:", error.message);
     res.status(500).json({ error: error.message });
   }
 };

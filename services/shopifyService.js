@@ -1,8 +1,9 @@
 const config = require("../utils/config");
+const consts = require("../utils/products");
 const Shopify = require("shopify-api-node");
 const { ACCESS_TOKEN, SHOP, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SCOPES } =
   config;
-const fs = require("fs");
+// const fs = require("fs");
 const shopify = new Shopify({
   shopName: SHOP,
   apiKey: SHOPIFY_API_KEY,
@@ -31,13 +32,191 @@ async function searchProductByTitle(title) {
 }
 
 async function createProduct(product) {
+  return retryWithBackoff(async () => {
+    return await shopify.product.create(product);
+  });
+}
+
+async function listProductCustomMetafields(productId) {
+  return retryWithBackoff(async () => {
+    const metafields = await shopify.metafield.list({
+      owner_id: productId,
+      owner_resource: "product",
+    });
+    return metafields;
+  });
+}
+
+async function iniciarEntorno() {
+  const productTypeLatex = "Globo de Látex";
+  const productTypeNumerado = "Globo de Número";
+  async function iniciarCostos() {
+    const costosIds = {};
+    const productos = [
+      {
+        title: "Costo de Mano de Obra",
+        product_type: "Costo",
+        variants: [
+          {
+            price: "20.00",
+            option1: "Default Title",
+            inventory_management: null,
+          },
+        ],
+      },
+      {
+        title: "Costo del Helio",
+        product_type: "Costo",
+        variants: [
+          {
+            price: "25.00",
+            option1: "Default Title",
+            inventory_management: null,
+          },
+        ],
+      },
+    ];
+
+    for (let producto of productos) {
+      const product = await searchProductByTitle(producto.title);
+      if (product.length) {
+        if (producto.title === "Costo de Mano de Obra") {
+          costosIds.manoDeObra = product[0].id;
+        } else if (producto.title === "Costo del Helio") {
+          costosIds.helio = product[0].id;
+        }
+        console.log("Producto ya existe", producto.title);
+      } else {
+        console.log("Creando producto", producto.title);
+        const product = await createProduct(producto);
+        if (product) {
+          if (producto.title === "Costo de Mano de Obra") {
+            costosIds.manoDeObra = product.id;
+          } else if (producto.title === "Costo del Helio") {
+            costosIds.helio = product.id;
+          }
+        }
+      }
+    }
+
+    return costosIds;
+  }
+  async function iniciarProductosLatex() {
+    const productsDict = {};
+    for (let color of consts.coloresGloboLatex) {
+      const pTitle = `Globo de Látex ${color} (Insumo)`;
+      const product = await searchProductByTitle(pTitle);
+
+      if (product.length) {
+        console.log("Producto ya existe", pTitle);
+        // guardar el producto en el diccionario
+        productsDict[color] = product[0].id;
+        continue;
+      } else {
+        console.log("Creando producto", pTitle);
+        const data = {
+          title: `Globo de Látex ${color} (Insumo)`,
+          product_type: productTypeLatex,
+          variants: [
+            {
+              price: "1.00",
+              option1: "Default Title",
+              inventory_management: "shopify",
+            },
+          ],
+        };
+        const p = await createProduct(data);
+        if (p) {
+          productsDict[color] = p.id;
+        }
+      }
+    }
+    return productsDict;
+  }
+  async function iniciarProductosGlobosNumerados() {
+    const productsDict = {};
+    for (let color of consts.coloresGlobosNumerados) {
+      const productTitle = `Globo Numerado ${color} (Insumo)`;
+      const product = await searchProductByTitle(productTitle);
+
+      if (product.length) {
+        console.log("Producto ya existe", productTitle);
+        // guardar el producto en el diccionario
+        productsDict[color] = product[0].id;
+        continue;
+      }
+      try {
+        console.log("Creando producto", productTitle);
+        let variants = [];
+        for (let i = 1; i <= 10; i++) {
+          let numAsignado = i;
+          if (i === 10) {
+            numAsignado = 0;
+          }
+          variants.push({
+            price: "1.00",
+            option1: `Globo N°${numAsignado}`,
+            inventory_management: "shopify",
+          });
+        }
+
+        let numeradoCreado = await createProduct({
+          title: productTitle,
+          product_type: productTypeNumerado,
+          variants,
+        });
+
+        let numeradoId = -1;
+        if (numeradoCreado) {
+          numeradoId = numeradoCreado.id;
+          console.log("Producto creado", productTitle);
+        }
+
+        if (numeradoId !== -1) {
+          const newOptionName = "Número";
+          const originalOptions = numeradoCreado.options[0];
+
+          const newOptions = {
+            id: originalOptions.id,
+            product_id: originalOptions.product_id,
+            name: newOptionName,
+            position: originalOptions.position,
+            values: originalOptions.values,
+          };
+
+          numeradoCreado.options = [newOptions];
+
+          const updatedProduct = await retryWithBackoff(() => {
+            return shopify.product.update(numeradoId, numeradoCreado);
+          });
+
+          if (updatedProduct) {
+            console.log("Producto actualizado", productTitle);
+            productsDict[color] = updatedProduct.id;
+          }
+        }
+      } catch (error) {
+        console.log("Error creando el producto", error);
+      }
+    }
+
+    return productsDict;
+  }
+
+  console.log("Iniciando entorno");
+  const costosIds = await iniciarCostos();
+  const globosLatex = await iniciarProductosLatex();
+  const globosNumerados = await iniciarProductosGlobosNumerados();
+}
+
+async function createCustomProductTest(product) {
   const { title, price } = product;
 
   const newProduct = {
     title,
     body_html: "",
     vendor: "Mis Globos",
-    product_type: "Ramo Creado",
+    product_type: "Ramo Personalizado",
     variants: [
       {
         price,
@@ -57,6 +236,95 @@ async function actualizarVarianteProducto(productoId, variantId, price) {
   });
 }
 
+async function addDataExtraToProduct(productId, dataExtra) {
+  try {
+    const metafields = await listProductCustomMetafields(productId);
+    const metafield = metafields.find(
+      (metafield) => metafield.key === "data_extra"
+    );
+    if (metafield) {
+      await retryWithBackoff(() =>
+        shopify.metafield.update(metafield.id, {
+          value: JSON.stringify(dataExtra),
+        })
+      );
+    } else {
+      await retryWithBackoff(() =>
+        shopify.metafield.create({
+          namespace: "custom",
+          key: "data_extra",
+          value: JSON.stringify(dataExtra),
+          owner_id: productId,
+          owner_resource: "product",
+          value_type: "json",
+        })
+      );
+    }
+  } catch (error) {
+    console.error("Error guardando el data extra en el producto", error);
+  }
+}
+
+async function searchProductByDataExtra(dataExtra) {
+  try {
+    const {
+      idVariantPrimerNumero,
+      idVariantSegundoNumero,
+      dataGlobosLatex,
+      colorNumero,
+    } = dataExtra;
+
+    if (!idVariantPrimerNumero || !idVariantSegundoNumero || !dataGlobosLatex) {
+      throw new Error("Data extra incompleta");
+    }
+
+    const idsGlobosLatex = Object.values(dataGlobosLatex).map(
+      (globo) => globo.id
+    );
+
+    console.log("IDs Globos Látex:", idsGlobosLatex);
+
+    const ramosPersonalizados = await getProductByProductType(
+      "Ramo Personalizado"
+    );
+
+    for (const ramo of ramosPersonalizados) {
+      const metafields = await getProductCustomMetafields(ramo.id);
+      const metafield = metafields.find((mf) => mf.key === "data_extra");
+
+      if (metafield) {
+        const data = JSON.parse(metafield.value);
+        console.log("Data desde función", data);
+
+        const {
+          idVariantPrimerNumero: varPrimG,
+          idVariantSegundoNumero: varSegG,
+          dataGlobosLatex: dataLatexG,
+          colorNumero: colorNumeroG,
+        } = data;
+
+        const idsG = Object.values(dataLatexG).map((globo) => globo.id);
+
+        console.log("IDs desde Metafields:", idsG);
+
+        const isValid =
+          varPrimG === idVariantPrimerNumero &&
+          varSegG === idVariantSegundoNumero &&
+          idsG.every((id) => idsGlobosLatex.includes(id)) &&
+          colorNumeroG === colorNumero &&
+          idsG.length === idsGlobosLatex.length;
+
+        if (isValid) {
+          return [ramo];
+        }
+      }
+    }
+    return [];
+  } catch (error) {
+    console.error("Error buscando productos por data extra:", error);
+  }
+}
+
 async function listProducts() {
   return retryWithBackoff(async () => {
     const products = await shopify.product.list();
@@ -69,15 +337,11 @@ async function listProducts() {
 
 async function getProductById(id) {
   return retryWithBackoff(async () => {
-    return await shopify.product.get(id);
-  });
-}
-
-async function getProductMetafields(productId) {
-  return retryWithBackoff(async () => {
-    return await shopify.metafield.list({
-      metafield: { owner_resource: "product", owner_id: productId },
-    });
+    try {
+      return await shopify.product.get(id);
+    } catch (error) {
+      return null;
+    }
   });
 }
 
@@ -101,7 +365,7 @@ async function getProductByProductType(productType) {
 
 async function getProductosFromProducto(id) {
   try {
-    const metafields = await getProductMetafields(id);
+    const metafields = await getProductCustomMetafields(id);
     if (!metafields.length) return [];
 
     const data_productos = [];
@@ -158,7 +422,7 @@ async function obtenerBundlesContienenProducto(productId, bundleType) {
 
 async function tieneProductos(id) {
   try {
-    const metafields = await getProductMetafields(id);
+    const metafields = await getProductCustomMetafields(id);
     // console.log("Metafields", metafields);
 
     if (!metafields.length) return false;
@@ -425,18 +689,77 @@ async function contenidoEnPaquete(productId, bundleType) {
   });
 }
 
-async function actualizarInventario(productId, inventory) {
-  return retryWithBackoff(async () => {
-    return await shopify.productVariant.update(productId, {
-      inventory_quantity: inventory,
+async function getVariant(variantId) {
+  try {
+    const variant = await retryWithBackoff(() => {
+      return shopify.productVariant.get(variantId);
     });
-  });
+    return variant;
+  } catch (error) {
+    console.error("Error obteniendo el variant:", error);
+    return null;
+  }
+}
+
+async function getInventoryLevels(inventoryItemId) {
+  try {
+    const inventoryLevels = await retryWithBackoff(() => {
+      return shopify.inventoryLevel.list({
+        inventory_item_ids: inventoryItemId,
+      });
+    });
+    return inventoryLevels;
+  } catch (error) {
+    console.error("Error obteniendo los niveles de inventario:", error);
+    return null;
+  }
+}
+
+async function reducirInventario(variantId, quantityToReduce) {
+  try {
+    const variant = await getVariant(variantId);
+
+    if (!variant.inventory_management) {
+      console.log("El producto no tiene inventario");
+      return;
+    }
+    const inventoryItemId = variant.inventory_item_id;
+
+    const inventoryLevels = await getInventoryLevels(inventoryItemId);
+
+    const index = inventoryLevels.findIndex(
+      (inventoryLevel) => inventoryLevel.available > 0
+    );
+
+    if (index === -1) {
+      // disminuir el inventario del primer nivel
+      await retryWithBackoff(() => {
+        return shopify.inventoryLevel.set({
+          location_id: inventoryLevels[0].location_id,
+          inventory_item_id: inventoryItemId,
+          available: inventoryLevels[0].available - quantityToReduce,
+        });
+      });
+    } else {
+      // disminuir el inventario del nivel que tenga inventario
+      await retryWithBackoff(() => {
+        return shopify.inventoryLevel.set({
+          location_id: inventoryLevels[index].location_id,
+          inventory_item_id: inventoryItemId,
+          available: inventoryLevels[index].available - quantityToReduce,
+        });
+      });
+    }
+  } catch (error) {
+    console.error("Error actualizando el inventario:", error);
+    return null;
+  }
 }
 
 module.exports = {
   listProducts,
   getProductById,
-  getProductMetafields,
+  getProductCustomMetafields,
   getProductByProductType,
   getProductosFromProducto,
   obtenerBundlesContienenProducto,
@@ -446,8 +769,13 @@ module.exports = {
   tieneProductos,
   getProductCustomMetafields,
   actualizarRamosDoblesNumeradosDeProducto,
-  createProduct,
+  createCustomProductTest,
   searchProductByTitle,
   actualizarVarianteProducto,
-  actualizarInventario,
+  reducirInventario,
+  getVariant,
+  iniciarEntorno,
+  listProductCustomMetafields,
+  addDataExtraToProduct,
+  searchProductByDataExtra,
 };

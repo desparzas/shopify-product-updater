@@ -1,7 +1,7 @@
 const {
   listProducts,
   getProductById,
-  getProductMetafields,
+  getProductCustomMetafields,
   getProductByProductType,
 } = require("../services/shopifyService");
 
@@ -25,7 +25,7 @@ const getProduct = async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: "Product not found" });
     }
-    product.metafields = await getProductMetafields(id);
+    product.metafields = await getProductCustomMetafields(id);
     res.json({
       data: product,
     });
