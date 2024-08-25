@@ -3,7 +3,8 @@ const consts = require("../utils/products");
 const Shopify = require("shopify-api-node");
 const { ACCESS_TOKEN, SHOP, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SCOPES } =
   config;
-// const fs = require("fs");
+const fs = require("fs");
+const { query } = require("express");
 const shopify = new Shopify({
   shopName: SHOP,
   apiKey: SHOPIFY_API_KEY,
@@ -25,10 +26,15 @@ async function retryWithBackoff(fn, retries = 10, delay = 1000) {
 }
 
 async function searchProductByTitle(title) {
-  return retryWithBackoff(async () => {
-    const products = await shopify.product.list({ title });
-    return products;
-  });
+  try {
+    return retryWithBackoff(async () => {
+      const products = await shopify.product.list({ title });
+      return products;
+    });
+  } catch (error) {
+    console.error("Error buscando el producto por título", error);
+    return [];
+  }
 }
 
 async function createProduct(product) {
@@ -104,7 +110,7 @@ async function iniciarEntorno() {
   async function iniciarProductosLatex() {
     const productsDict = {};
     for (let color of consts.coloresGloboLatex) {
-      const pTitle = `Globo de Látex ${color} (Insumo)`;
+      const pTitle = `Globo de Látex Prueba 3 ${color} (Insumo)`;
       const product = await searchProductByTitle(pTitle);
 
       if (product.length) {
@@ -115,7 +121,7 @@ async function iniciarEntorno() {
       } else {
         console.log("Creando producto", pTitle);
         const data = {
-          title: `Globo de Látex ${color} (Insumo)`,
+          title: pTitle,
           product_type: productTypeLatex,
           variants: [
             {
@@ -136,7 +142,7 @@ async function iniciarEntorno() {
   async function iniciarProductosGlobosNumerados() {
     const productsDict = {};
     for (let color of consts.coloresGlobosNumerados) {
-      const productTitle = `Globo Numerado ${color} (Insumo)`;
+      const productTitle = `Globo Numerado Prueba 3 ${color} (Insumo)`;
       const product = await searchProductByTitle(productTitle);
 
       if (product.length) {
@@ -326,22 +332,39 @@ async function searchProductByDataExtra(dataExtra) {
 }
 
 async function listProducts() {
-  return retryWithBackoff(async () => {
-    const products = await shopify.product.list();
-    for (let product of products) {
-      product.metafields = await getProductCustomMetafields(product.id);
+  let allProducts = [];
+  let params = {
+    limit: 50,
+    fields: ["id", "title", "product_type", "variants", "options"],
+    order: "id asc",
+  };
+
+  console.log("Obteniendo productos...");
+  let hasMoreProducts = true;
+
+  do {
+    // obtener los products ordenados de 10 en 10 ordenados por id
+    let products = await retryWithBackoff(() => {
+      return shopify.product.list(params);
+    });
+
+    // ordenar los productos por id
+    products = products.sort((a, b) => a.id - b.id);
+    allProducts = allProducts.concat(products);
+
+    if (products.length < params.limit) {
+      hasMoreProducts = false;
+    } else {
+      params.since_id = products[products.length - 1].id;
     }
-    return products;
-  });
+  } while (hasMoreProducts);
+
+  return allProducts;
 }
 
 async function getProductById(id) {
   return retryWithBackoff(async () => {
-    try {
-      return await shopify.product.get(id);
-    } catch (error) {
-      return null;
-    }
+    return await shopify.product.get(id);
   });
 }
 
@@ -363,48 +386,6 @@ async function getProductByProductType(productType) {
   });
 }
 
-async function getProductosFromProducto(id) {
-  try {
-    const metafields = await getProductCustomMetafields(id);
-    if (!metafields.length) return [];
-
-    const data_productos = [];
-    for (let i = 1; i <= 20; i++) {
-      const productoMetafield = metafields.find(
-        (metafield) => metafield.key === `producto_${i}` && metafield.value
-      );
-      const cantidadMetafield = metafields.find(
-        (metafield) =>
-          metafield.key === `cantidad_del_producto_${i}` && metafield.value
-      );
-
-      if (productoMetafield && cantidadMetafield) {
-        const productoId = productoMetafield.value.replace(/[^0-9]/g, "");
-        const cantidad = parseFloat(cantidadMetafield.value);
-
-        const producto = await getProductById(productoId);
-        if (producto) {
-          data_productos.push({
-            producto: {
-              id: producto.id,
-              title: producto.title,
-              product_type: producto.product_type,
-              variants: producto.variants,
-            },
-            cantidad,
-          });
-        } else {
-          console.error("Producto no encontrado para ID:", productoId);
-        }
-      }
-    }
-    return data_productos;
-  } catch (error) {
-    console.error("Error obteniendo los productos de un ramo", error);
-    return [];
-  }
-}
-
 async function obtenerBundlesContienenProducto(productId, bundleType) {
   return retryWithBackoff(async () => {
     let ramos = await getProductByProductType(bundleType);
@@ -420,255 +401,176 @@ async function obtenerBundlesContienenProducto(productId, bundleType) {
   });
 }
 
-async function tieneProductos(id) {
-  try {
-    const metafields = await getProductCustomMetafields(id);
-    // console.log("Metafields", metafields);
-
-    if (!metafields.length) return false;
-
-    for (let i = 1; i <= 20; i++) {
-      const productoMetafield = metafields.find(
-        (metafield) => metafield.key === `producto_${i}` && metafield.value
-      );
-      const cantidadMetafield = metafields.find(
-        (metafield) =>
-          metafield.key === `cantidad_del_producto_${i}` && metafield.value
-      );
-
-      if (productoMetafield && cantidadMetafield) {
-        return true;
-      }
-    }
-    return false;
-  } catch (error) {
-    console.error(
-      "Error verificando si el producto contiene otros productos",
-      error
-    );
-    return false;
-  }
+function isDefaultOption(options) {
+  if (options.length !== 1) return false;
+  const option = options[0];
+  const { name, values } = option;
+  return (
+    name === "Title" && values.length === 1 && values[0] === "Default Title"
+  );
 }
 
-async function actualizarRamosSimplesDeProducto(productId) {
+function isSimpleProduct(product) {
+  return product.variants.length === 1 && isDefaultOption(product.options);
+}
+
+async function getBundlesWithProduct(productId) {
   try {
     const id = parseInt(productId, 10);
     const product = await getProductById(id);
     if (!product) {
       console.log(
-        "Producto no encontrado en la base de datos desde la función updateRamosSimples"
+        "Producto no encontrado en la base de datos desde la función getBundlesWithProduct"
       );
       return;
     }
-    const precioNuevo = parseFloat(product.variants[0].price);
-    const ramos = await obtenerBundlesContienenProducto(id, "Ramo Simple");
-    const ramosSimples = ramos.filter((ramo) => {
+
+    let products = await listProducts();
+
+    console.log("Productos obtenidos:", products.length);
+
+    for (const product of products) {
+      const metafields = await getProductCustomMetafields(product.id);
+      product.metafields = metafields;
+    }
+
+    // filtrar a los productos que tengan metafields y que tengan el key "lista_de_productos" en el namespace "custom"
+    let bundles = products.filter((product) => {
       return (
-        ramo.productos.every(
-          (producto) => producto.producto.variants.length === 1
-        ) && ramo.variants.length === 1
+        product.metafields.length > 0 &&
+        product.metafields.some(
+          (metafield) =>
+            metafield.key === "lista_de_productos" &&
+            metafield.namespace === "custom"
+        )
       );
     });
 
-    const actualizaciones = ramosSimples.map(async (ramo) => {
-      let precioRamo = 0;
-      ramo.productos.forEach((producto) => {
-        const precioProducto = parseFloat(producto.producto.variants[0].price);
-        const cantidad = producto.cantidad;
-        precioRamo +=
-          (producto.producto.id !== id ? precioProducto : precioNuevo) *
-          cantidad;
+    // filtrar a los productos que tengan el producto en su lista de productos
+    bundles = bundles.filter((bundle) => {
+      // console.log("Buscando en el bundle", bundle.title);
+      const metafield = bundle.metafields.find(
+        (metafield) => metafield.key === "lista_de_productos"
+      );
+      let listaProductos = JSON.parse(metafield.value);
+      const t = listaProductos.some((producto) => {
+        const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
+        return id === productId;
       });
-      const precioRamoNuevo = precioRamo.toFixed(2);
-      if (precioRamoNuevo !== ramo.variants[0].price) {
-        console.log(
-          `Actualizado el precio del ramo ${ramo.title} a ${precioRamoNuevo} de ${ramo.variants[0].price} a ${precioRamoNuevo}`
-        );
-
-        await retryWithBackoff(() =>
-          shopify.productVariant.update(ramo.variants[0].id, {
-            price: precioRamoNuevo,
-          })
-        );
-      }
+      // console.log("Lista de productos:", t);
+      return t;
     });
 
-    await Promise.all(actualizaciones);
+    // convertir la lista de productos a un arreglo de productos, buscando el producto en la lista de productos
 
-    console.log("Ramos simples actualizados del producto ", product.title);
+    bundles = bundles.map((bundle) => {
+      const { metafields } = bundle;
+      const listaProductosMetafield = metafields.find(
+        (metafield) =>
+          metafield.key === "lista_de_productos" &&
+          metafield.namespace === "custom"
+      );
+
+      const listaCantidadMetafield = metafields.find(
+        (metafield) =>
+          metafield.key === "lista_de_cantidad" &&
+          metafield.namespace === "custom"
+      );
+
+      let listaProductos = JSON.parse(listaProductosMetafield.value);
+      listaProductos = listaProductos.map((producto) => {
+        const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
+        return products.find((product) => product.id === id);
+      });
+
+      let listaCantidad;
+
+      if (listaCantidadMetafield) {
+        listaCantidad = JSON.parse(listaCantidadMetafield.value);
+        listaCantidad = listaCantidad.map((cantidad) => parseFloat(cantidad));
+        if (listaCantidad.length !== listaProductos.length) {
+          listaCantidad = Array(listaProductos.length).fill(1);
+        }
+      } else {
+        listaCantidad = Array(listaProductos.length).fill(1);
+      }
+
+      return {
+        ...bundle,
+        productos: listaProductos,
+        cantidades: listaCantidad,
+      };
+    });
+
+    console.log("Bundles obtenidos:", bundles.length);
+
+    return bundles;
   } catch (error) {
-    console.log("Error actualizando ramos simples: ", error);
+    console.error("Error obteniendo los bundles con el producto", error);
+    return [];
   }
 }
 
-async function actualizarGlobosNumeradosDeProducto(productId) {
+async function actualizarBundlesDeProducto(productId) {
   try {
     const id = parseInt(productId, 10);
     const product = await getProductById(id);
     if (!product) {
-      console.log(
-        "Producto no encontrado en la base de datos desde la función updateRamosSimples"
+      throw new Error(
+        "Producto no encontrado en la base de datos desde la función updateBundles"
       );
-      return;
     }
-    const globosNumerados = await obtenerBundlesContienenProducto(
-      id,
-      "Globo de Número"
+    console.log("Actualizando bundles del producto ", product.title);
+    const bundles = await getBundlesWithProduct(id);
+    fs.writeFileSync(
+      "./test/bundlesHelios.json",
+      JSON.stringify(bundles, null, 2)
     );
+    for (const bundle of bundles) {
+      console.log("_".repeat(50));
+      console.log("Actualizando el bundle", bundle.title);
 
-    const actualizaciones = globosNumerados.map(async (globo) => {
-      let variantsTemp = JSON.parse(JSON.stringify(globo.variants));
-      const posibleOptions = [];
-      for (let variant of variantsTemp) {
-        const option1 = variant.option1;
-        if (!posibleOptions.includes(option1)) {
-          const formatted = option1.replace("Globo N°", "");
-          posibleOptions.push(formatted);
+      const { options, variants, metafields, productos, cantidades } = bundle;
+
+      if (isSimpleProduct(bundle)) {
+        console.log("El bundle es un producto simple");
+        const precioActual = variants[0].price;
+        let precioTotal = 0;
+
+        for (let i = 0; i < productos.length; i++) {
+          const producto = productos[i];
+          const cantidad = cantidades[i];
+          const precio = producto.variants[0].price;
+          precioTotal += cantidad * precio;
         }
-      }
 
-      const productoGlobo = globo.productos.find(
-        (producto) => producto.producto.product_type === "Globo de Número"
-      );
+        console.log("ACTUAL - NUEVO", precioActual, precioTotal);
 
-      const simples = globo.productos.filter(
-        (producto) => producto.producto.variants.length === 1
-      );
-      let sumaSimples = 0;
-      for (let simple of simples) {
-        sumaSimples +=
-          parseFloat(simple.producto.variants[0].price) * simple.cantidad;
-      }
-
-      let variantsUpdated = false;
-      for (let i of posibleOptions) {
-        const variantTemp = variantsTemp.find(
-          (variant) => variant.option1 === `Globo N°${i}`
-        );
-        const index = variantsTemp.indexOf(variantTemp);
-        const variant = globo.variants.find(
-          (variant) => variant.option1 === `Globo N°${i}`
-        );
-
-        const unitVariant = productoGlobo.producto.variants.find(
-          (variant) => variant.option1 === `Globo N°${i}`
-        );
-
-        if (variant.price !== sumaSimples + parseFloat(unitVariant.price)) {
-          const precioNuevo = sumaSimples + parseFloat(unitVariant.price);
-          const precioNuevoString = precioNuevo.toFixed(2);
-          variantsTemp[index].price = precioNuevoString;
-          variantsUpdated = true;
-        }
-      }
-
-      if (variantsUpdated) {
-        await retryWithBackoff(() =>
-          shopify.product.update(globo.id, { variants: variantsTemp })
-        );
-      }
-    });
-
-    await Promise.all(actualizaciones);
-
-    console.log("Globos numerados actualizados del producto ", product.title);
-  } catch (error) {
-    console.log("Error actualizando globos numerados: ", error);
-  }
-}
-
-async function actualizarRamosDoblesNumeradosDeProducto(productId) {
-  try {
-    const id = parseInt(productId, 10);
-    const product = await getProductById(id);
-    if (!product) {
-      console.log(
-        "Producto no encontrado en la base de datos desde la función updateRamosSimples"
-      );
-      return;
-    }
-    const ramosDoblesNumerados = await obtenerBundlesContienenProducto(
-      id,
-      "Ramo Doble Numerado"
-    );
-
-    const actualizaciones = ramosDoblesNumerados.map(async (globo) => {
-      let variantsTemp = JSON.parse(JSON.stringify(globo.variants));
-      const posibleOptions = [];
-
-      for (let variant of variantsTemp) {
-        const option1 = variant.option1;
-        const option2 = variant.option2;
-        const combinedOptions = `${option1}-${option2}`;
-        if (!posibleOptions.includes(combinedOptions)) {
-          const formattedOption1 = option1.replace("Globo N°", "");
-          const formattedOption2 = option2.replace("Globo N°", "");
-          posibleOptions.push({
-            option1: formattedOption1,
-            option2: formattedOption2,
+        if (precioTotal !== precioActual) {
+          console.log("Actualizando el precio del bundle");
+          await retryWithBackoff(() => {
+            return shopify.productVariant.update(variants[0].id, {
+              price: precioTotal,
+            });
           });
         }
-      }
-
-      const productoGlobo = globo.productos.find(
-        (producto) => producto.producto.product_type === "Globo de Número"
-      );
-
-      const simples = globo.productos.filter(
-        (producto) => producto.producto.variants.length === 1
-      );
-      let sumaSimples = 0;
-      for (let simple of simples) {
-        sumaSimples +=
-          parseFloat(simple.producto.variants[0].price) * simple.cantidad;
-      }
-
-      let variantsUpdated = false;
-      for (let options of posibleOptions) {
-        const { option1, option2 } = options;
-        const variantTemp = variantsTemp.find(
-          (variant) =>
-            variant.option1 === `Globo N°${option1}` &&
-            variant.option2 === `Globo N°${option2}`
-        );
-        const index = variantsTemp.indexOf(variantTemp);
-        const variant = globo.variants.find(
-          (variant) =>
-            variant.option1 === `Globo N°${option1}` &&
-            variant.option2 === `Globo N°${option2}`
-        );
-
-        const unitVariant1 = productoGlobo.producto.variants.find(
-          (variant) => variant.option1 === `Globo N°${option1}`
-        );
-        const unitVariant2 = productoGlobo.producto.variants.find(
-          (variant) => variant.option1 === `Globo N°${option2}`
-        );
-
-        const nuevoPrecio =
-          sumaSimples +
-          parseFloat(unitVariant1.price) +
-          parseFloat(unitVariant2.price);
-
-        const nuevoPrecioString = nuevoPrecio.toFixed(2);
-
-        if (variant.price !== nuevoPrecioString) {
-          variantsTemp[index].price = nuevoPrecioString;
-          variantsUpdated = true;
+      } else {
+        const { variants, options } = bundle;
+        if (options.length === 1) {
+          console.log("El bundle tiene una opción");
+        } else if (options.length === 2) {
+          console.log("El bundle tiene dos opciones");
+        } else if (options.length === 3) {
+          console.log("El bundle tiene tres opciones");
         }
       }
-      if (variantsUpdated) {
-        await retryWithBackoff(() =>
-          shopify.product.update(globo.id, { variants: variantsTemp })
-        );
-      }
-    });
 
-    await Promise.all(actualizaciones);
+      console.log("_".repeat(50));
+    }
 
-    console.log("Globos numerados actualizados del producto ", product.title);
+    fs.writeFileSync("./test/bundles.json", JSON.stringify(bundles, null, 2));
   } catch (error) {
-    console.log("Error actualizando globos numerados: ", error);
+    console.log("Error actualizando bundles: ", error);
   }
 }
 
@@ -761,14 +663,8 @@ module.exports = {
   getProductById,
   getProductCustomMetafields,
   getProductByProductType,
-  getProductosFromProducto,
   obtenerBundlesContienenProducto,
-  actualizarRamosSimplesDeProducto,
   contenidoEnPaquete,
-  actualizarGlobosNumeradosDeProducto,
-  tieneProductos,
-  getProductCustomMetafields,
-  actualizarRamosDoblesNumeradosDeProducto,
   createCustomProductTest,
   searchProductByTitle,
   actualizarVarianteProducto,
@@ -778,4 +674,5 @@ module.exports = {
   listProductCustomMetafields,
   addDataExtraToProduct,
   searchProductByDataExtra,
+  actualizarBundlesDeProducto,
 };

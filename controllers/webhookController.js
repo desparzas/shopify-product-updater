@@ -165,7 +165,7 @@ async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
     console.log(
-      "Procesando webhook para el producto ",
+      "Procesando webhook para el producto",
       productData.id,
       "-",
       productData.title
@@ -185,60 +185,7 @@ async function handleProductUpdate(req, res) {
       return res.status(200).send("El producto tiene productos");
     }
 
-    const contenidoEnRamo = await shopifyService.contenidoEnPaquete(
-      productData.id,
-      "Ramo Simple"
-    );
-
-    const contenidoEnGloboNumero = await shopifyService.contenidoEnPaquete(
-      productData.id,
-      "Globo de Número"
-    );
-
-    const contenidoEnRamoDobleNumerado =
-      await shopifyService.contenidoEnPaquete(
-        productData.id,
-        "Ramo Doble Numerado"
-      );
-
-    if (contenidoEnRamo) {
-      console.log(
-        `El producto ${productData.title} está contenido en un ramo simple`
-      );
-      await shopifyService.actualizarRamosSimplesDeProducto(productData.id);
-      console.log(
-        "Ramos simples actualizados del producto ",
-        productData.title
-      );
-    } else {
-      console.log(
-        `El producto ${productData.title} no está contenido en un ramo simple`
-      );
-    }
-
-    if (contenidoEnGloboNumero) {
-      console.log(
-        `El producto ${productData.title} está contenido en un globo de número`
-      );
-      await shopifyService.actualizarGlobosNumeradosDeProducto(productData.id);
-    } else {
-      console.log(
-        `El producto ${productData.title} no está contenido en un globo de número`
-      );
-    }
-
-    if (contenidoEnRamoDobleNumerado) {
-      console.log(
-        `El producto ${productData.title} está contenido en un ramo doble numerado`
-      );
-      await shopifyService.actualizarRamosDoblesNumeradosDeProducto(
-        productData.id
-      );
-    } else {
-      console.log(
-        `El producto ${productData.title} no está contenido en un ramo doble numerado`
-      );
-    }
+    await shopifyService.actualizarBundlesDeProducto(productData.id);
 
     console.log("Webhook procesado para el producto ", productData.title);
     return res.status(200).send("Webhook recibido");
