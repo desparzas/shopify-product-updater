@@ -216,7 +216,7 @@ async function iniciarEntorno() {
 }
 
 async function createCustomProductTest(product) {
-  const { title, price, published_scope } = product;
+  const { title, price, published_scope, published_at } = product;
 
   const newProduct = {
     title,
@@ -230,6 +230,7 @@ async function createCustomProductTest(product) {
       },
     ],
     published_scope,
+    published_at,
   };
 
   return retryWithBackoff(async () => {
