@@ -4,9 +4,6 @@ const shopifyService = require("../services/shopifyService");
 const { globosNumerados, globosLatex } = require("../utils/products");
 const { extractNumber } = require("../utils/functions");
 const processedProducts = new Set();
-const queue = []; // Cola para manejar las peticiones
-let isProcessing = false; // Indicador para saber si la cola está siendo procesada
-
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
   const hmac = req.headers["x-shopify-hmac-sha256"];
@@ -163,23 +160,6 @@ async function handleOrderCreate(req, res) {
   }
 }
 
-// Función para procesar la cola
-async function processQueue() {
-  if (isProcessing || queue.length === 0) {
-    return;
-  }
-
-  isProcessing = true;
-  const { req, res } = queue.shift(); // Obtén la primera petición en la cola
-
-  try {
-    await handleProductUpdate(req, res); // Invoca handleProductUpdate aquí
-  } finally {
-    isProcessing = false;
-    processQueue(); // Procesa la siguiente petición en la cola
-  }
-}
-
 // Endpoint para recibir el webhook
 async function handleProductUpdate(req, res) {
   try {
@@ -207,14 +187,8 @@ async function handleProductUpdate(req, res) {
   }
 }
 
-// Middleware para encolar las peticiones
-function enqueueRequest(req, res, next) {
-  queue.push({ req, res });
-  processQueue(); // Procesa la cola cada vez que se agrega una nueva petición
-}
-
 module.exports = {
   verifyHMAC,
-  enqueueRequest,
+  handleProductUpdate,
   handleOrderCreate,
 };
