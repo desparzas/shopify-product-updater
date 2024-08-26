@@ -4,6 +4,10 @@ const shopifyService = require("../services/shopifyService");
 const { globosNumerados, globosLatex } = require("../utils/products");
 const { extractNumber } = require("../utils/functions");
 const processedProducts = new Set();
+
+let processing = false;
+const queue = [];
+
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
   const hmac = req.headers["x-shopify-hmac-sha256"];
@@ -160,6 +164,27 @@ async function handleOrderCreate(req, res) {
   }
 }
 
+async function processQueue() {
+  if (processing || queue.length === 0) {
+    return;
+  }
+
+  processing = true;
+
+  const { req, res } = queue.shift();
+
+  try {
+    // Procesa la petición aquí, llamando a handleProductUpdate
+    await handleProductUpdate(req, res);
+  } catch (error) {
+    console.error("Error processing webhook:", error);
+    res.status(500).send("Internal Server Error");
+  }
+
+  processing = false;
+  processQueue(); // Procesa la siguiente petición en la cola
+}
+
 // Endpoint para recibir el webhook
 async function handleProductUpdate(req, res) {
   try {
@@ -187,8 +212,13 @@ async function handleProductUpdate(req, res) {
   }
 }
 
+async function handleProductUpdateRequest(req, res) {
+  queue.push({ req, res });
+  processQueue();
+}
+
 module.exports = {
   verifyHMAC,
-  handleProductUpdate,
+  handleProductUpdateRequest,
   handleOrderCreate,
 };
