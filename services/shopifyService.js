@@ -555,11 +555,12 @@ async function actualizarBundlesDeProducto(productId) {
           });
         }
       } else {
-        // const { variants, options } = bundle;
         if (options.length === 1) {
           console.log("El bundle tiene una opción");
           for (const variant of variants) {
             const { option1 } = variant;
+
+            let precioTemp;
 
             // buscar en la lista de productos el producto que coincida con la opción
             const producto = productos.find((producto) => {
@@ -567,10 +568,14 @@ async function actualizarBundlesDeProducto(productId) {
               const encontradoVariant = variants.find(
                 (v) => v.option1 === option1
               );
+              if (encontradoVariant) {
+                precioTemp = encontradoVariant.price;
+              }
               return encontradoVariant;
             });
             console.log("Nombre de la variante del paquete:", option1);
             console.log("Producto con opción encontrado:", producto.title);
+            console.log("Precio de la variante del producto:", precioTemp);
           }
         } else if (options.length === 2) {
           console.log("El bundle tiene dos opciones");
