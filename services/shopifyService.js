@@ -559,10 +559,7 @@ async function actualizarBundlesDeProducto(productId) {
           console.log("El bundle tiene una opción");
           for (const variant of variants) {
             const { option1 } = variant;
-
             let precioTemp;
-
-            // buscar en la lista de productos el producto que coincida con la opción
             const producto = productos.find((producto) => {
               const { variants } = producto;
               const encontradoVariant = variants.find(
@@ -573,12 +570,142 @@ async function actualizarBundlesDeProducto(productId) {
               }
               return encontradoVariant;
             });
-            console.log("Nombre de la variante del paquete:", option1);
-            console.log("Producto con opción encontrado:", producto.title);
-            console.log("Precio de la variante del producto:", precioTemp);
+            let precioTotal = 0;
+            for (let i = 0; i < productos.length; i++) {
+              const p = productos[i];
+              const cantidad = cantidades[i];
+              let precio;
+              if (p.id === producto.id) {
+                precio = precioTemp;
+              } else {
+                precio = p.variants[0].price;
+              }
+              precioTotal += cantidad * precio;
+            }
+
+            if (precioTotal != variant.price) {
+              console.log("ACTUALIZANDO: ", variant.price, "-->", precioTotal);
+              await retryWithBackoff(() => {
+                return shopify.productVariant.update(variant.id, {
+                  price: precioTotal,
+                });
+              });
+            }
           }
         } else if (options.length === 2) {
           console.log("El bundle tiene dos opciones");
+          for (const variant of variants) {
+            const { option1, option2 } = variant;
+            console.log("Nombre de la variante del paquete:", option1, option2);
+            let precioTemp;
+            const producto2Options = productos.find((producto) => {
+              const { variants } = producto;
+              const encontradoVariant = variants.find(
+                (v) => v.option1 === option1 && v.option2 === option2
+              );
+              if (encontradoVariant) {
+                precioTemp = encontradoVariant.price;
+              }
+              return encontradoVariant;
+            });
+            if (producto2Options && precioTemp) {
+              let precioTotal = 0;
+              for (let i = 0; i < productos.length; i++) {
+                const p = productos[i];
+                const cantidad = cantidades[i];
+                let precio;
+                if (p.id === producto2Options.id) {
+                  precio = precioTemp;
+                } else {
+                  precio = p.variants[0].price;
+                }
+                precioTotal += cantidad * precio;
+              }
+
+              if (precioTotal != variant.price) {
+                console.log(
+                  "ACTUALIZANDO: ",
+                  variant.price,
+                  "-->",
+                  precioTotal
+                );
+                await retryWithBackoff(() => {
+                  return shopify.productVariant.update(variant.id, {
+                    price: precioTotal,
+                  });
+                });
+              }
+            } else {
+              let precio1;
+              const producto1Option1 = productos.find((producto) => {
+                const { variants } = producto;
+                const encontradoVariant = variants.find(
+                  (v) => v.option1 === option1
+                );
+                if (encontradoVariant) {
+                  precio1 = encontradoVariant.price;
+                  console.log("Precio del producto 1:", precio1);
+                  console.log(
+                    "PRODUCTO 1 - VARIANTE ENCONTRADA:",
+                    producto.title,
+                    encontradoVariant.option1
+                  );
+                }
+
+                return encontradoVariant;
+              });
+
+              let precio2;
+              const producto1Option2 = productos.find((producto) => {
+                const { variants } = producto;
+                const encontradoVariant = variants.find(
+                  (v) => v.option1 === option2
+                );
+                if (encontradoVariant) {
+                  precio2 = encontradoVariant.price;
+                  console.log("Precio del producto 2:", precio2);
+                  console.log(
+                    "PRODUCTO 2 - VARIANTE ENCONTRADA:",
+                    producto.title,
+                    encontradoVariant.option1
+                  );
+                }
+
+                return encontradoVariant;
+              });
+
+              if (producto1Option1 && producto1Option2 && precio1 && precio2) {
+                let precioTotal = 0;
+                for (let i = 0; i < productos.length; i++) {
+                  const p = productos[i];
+                  const cantidad = cantidades[i];
+                  let precio;
+                  if (p.id === producto1Option1.id) {
+                    precio = precio1;
+                  } else if (p.id === producto1Option2.id) {
+                    precio = precio2;
+                  } else {
+                    precio = p.variants[0].price;
+                  }
+                  precioTotal += cantidad * precio;
+                }
+
+                if (precioTotal != variant.price) {
+                  console.log(
+                    "ACTUALIZANDO: ",
+                    variant.price,
+                    "-->",
+                    precioTotal
+                  );
+                  await retryWithBackoff(() => {
+                    return shopify.productVariant.update(variant.id, {
+                      price: precioTotal,
+                    });
+                  });
+                }
+              }
+            }
+          }
         } else if (options.length === 3) {
           console.log("El bundle tiene tres opciones");
         }
