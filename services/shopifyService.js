@@ -3,8 +3,6 @@ const consts = require("../utils/products");
 const Shopify = require("shopify-api-node");
 const { ACCESS_TOKEN, SHOP, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SCOPES } =
   config;
-const fs = require("fs");
-const { query } = require("express");
 const shopify = new Shopify({
   shopName: SHOP,
   apiKey: SHOPIFY_API_KEY,
@@ -15,7 +13,7 @@ async function retryWithBackoff(fn, retries = 10, delay = 1000) {
   try {
     return await fn();
   } catch (error) {
-    if (error.response.statusCode === 429 && retries > 0) {
+    if (error.response && error.response.statusCode === 429 && retries > 0) {
       // console.log(`Rate limit hit, retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       return retryWithBackoff(fn, retries - 1, delay * 2);
@@ -434,7 +432,6 @@ async function getBundlesWithProduct(productId) {
       product.metafields = metafields;
     }
 
-    // filtrar a los productos que tengan metafields y que tengan el key "lista_de_productos" en el namespace "custom"
     let bundles = products.filter((product) => {
       return (
         product.metafields.length > 0 &&
@@ -446,9 +443,7 @@ async function getBundlesWithProduct(productId) {
       );
     });
 
-    // filtrar a los productos que tengan el producto en su lista de productos
     bundles = bundles.filter((bundle) => {
-      // console.log("Buscando en el bundle", bundle.title);
       const metafield = bundle.metafields.find(
         (metafield) => metafield.key === "lista_de_productos"
       );
@@ -457,11 +452,8 @@ async function getBundlesWithProduct(productId) {
         const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
         return id === productId;
       });
-      // console.log("Lista de productos:", t);
       return t;
     });
-
-    // convertir la lista de productos a un arreglo de productos, buscando el producto en la lista de productos
 
     bundles = bundles.map((bundle) => {
       const { metafields } = bundle;
@@ -495,16 +487,56 @@ async function getBundlesWithProduct(productId) {
         listaCantidad = Array(listaProductos.length).fill(1);
       }
 
-      return {
+      const b = {
         ...bundle,
         productos: listaProductos,
         cantidades: listaCantidad,
       };
+
+      return b;
     });
 
-    console.log("Bundles obtenidos:", bundles.length);
+    // ahora obtener los que tienen data_extra
+    const ramosPersonalizados = products.filter(
+      (product) =>
+        product.product_type === "Ramo Personalizado" &&
+        product.metafields.some((metafield) => metafield.key === "data_extra")
+    );
 
-    return bundles;
+    const ramosFiltrados = ramosPersonalizados.filter((ramo) => {
+      const metafield = ramo.metafields.find(
+        (metafield) => metafield.key === "data_extra"
+      );
+
+      const dataExtra = JSON.parse(metafield.value);
+
+      const { idVariantPrimerNumero, idVariantSegundoNumero, dataGlobosLatex } =
+        dataExtra;
+
+      const idsGlobosLatex = Object.values(dataGlobosLatex).map(
+        (globo) => globo.id
+      );
+
+      const productVariants = product.variants;
+
+      // verificar si alguno de los ids de las variantes del producto coincide con idVariantPrimerNumero o idVariantSegundoNumero o idsGlobosLatex
+
+      const igualPrimerNumero = productVariants.some(
+        (variant) => variant.id === idVariantPrimerNumero
+      );
+
+      const igualSegundoNumero = productVariants.some(
+        (variant) => variant.id === idVariantSegundoNumero
+      );
+
+      const igualGlobosLatex = productVariants.some((variant) =>
+        idsGlobosLatex.includes(variant.id)
+      );
+
+      return igualPrimerNumero || igualSegundoNumero || igualGlobosLatex;
+    });
+
+    return { bundles, ramosPersonalizados: ramosFiltrados };
   } catch (error) {
     console.error("Error obteniendo los bundles con el producto", error);
     return [];
@@ -521,11 +553,7 @@ async function actualizarBundlesDeProducto(productId) {
       );
     }
     console.log("Actualizando bundles del producto ", product.title);
-    const bundles = await getBundlesWithProduct(id);
-    fs.writeFileSync(
-      "./test/bundlesHelios.json",
-      JSON.stringify(bundles, null, 2)
-    );
+    const { bundles, ramosPersonalizados } = await getBundlesWithProduct(id);
     for (const bundle of bundles) {
       console.log("_".repeat(50));
       console.log("Actualizando el bundle", bundle.title);
@@ -714,7 +742,61 @@ async function actualizarBundlesDeProducto(productId) {
       console.log("_".repeat(50));
     }
 
-    fs.writeFileSync("./test/bundles.json", JSON.stringify(bundles, null, 2));
+    for (const ramo of ramosPersonalizados) {
+      const { metafields } = ramo;
+      const metafield = metafields.find(
+        (metafield) => metafield.key === "data_extra"
+      );
+      const dataExtra = JSON.parse(metafield.value);
+
+      const {
+        idVariantPrimerNumero,
+        idVariantSegundoNumero,
+        dataGlobosLatex,
+        colorNumero,
+      } = dataExtra;
+
+      const valores = Object.values(dataGlobosLatex).map((globo) => {
+        return {
+          id: globo.id,
+          cantidad: globo.cantidad,
+        };
+      });
+
+      const variantPrimerNumero = await getVariant(idVariantPrimerNumero);
+
+      const variantSegundoNumero = await getVariant(idVariantSegundoNumero);
+
+      const variantesGlobosLatex = await Promise.all(
+        valores.map((valor) => getVariant(valor.id))
+      );
+
+      let precioTotal = 0;
+
+      precioTotal += parseFloat(variantPrimerNumero.price);
+      precioTotal += parseFloat(variantSegundoNumero.price);
+
+      for (let i = 0; i < variantesGlobosLatex.length; i++) {
+        precioTotal +=
+          parseFloat(variantesGlobosLatex[i].price) * valores[i].cantidad;
+      }
+
+      console.log("Precio total del ramo personalizado:", precioTotal);
+
+      // actualizar el precio del ramo personalizado
+      const variantesRamo = ramo.variants;
+
+      const varianteRamo = variantesRamo[0];
+
+      if (precioTotal !== parseFloat(varianteRamo.price)) {
+        console.log("ACTUALIZANDO: ", varianteRamo.price, "-->", precioTotal);
+        await retryWithBackoff(() => {
+          return shopify.productVariant.update(varianteRamo.id, {
+            price: precioTotal,
+          });
+        });
+      }
+    }
   } catch (error) {
     console.log("Error actualizando bundles: ", error);
   }

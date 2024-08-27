@@ -26,135 +26,33 @@ function verifyHMAC(req, res, next) {
 async function handleOrderCreate(req, res) {
   try {
     const orderData = JSON.parse(req.body);
-    for (const orderItem of orderData.line_items) {
-      const { id, properties, quantity, title, product_id } = orderItem;
+    // for (const orderItem of orderData.line_items) {
+    //   console.log(`Procesando producto ${title} en la orden ${orderData.name}`);
+    //   const { id, properties, quantity, title, product_id, variant_id } =
+    //     orderItem;
 
-      console.log(`Procesando producto ${title} en la orden ${orderData.name}`);
+    //   const product = await shopifyService.getProductById(product_id);
 
-      if (properties.length === 0) {
-        console.log("El producto no tiene propiedades");
-        continue;
-      }
+    //   const { product_type } = product;
 
-      const colorNumero = properties.find(
-        (property) => property.name === "Color del Globo de Número"
-      )?.value;
+    //   // Validar si el producto es un Ramo Personalizado
+    //   if (product_type !== "Ramo Personalizado") {
+    //     continue;
+    //   }
 
-      const primerNumero = properties.find(
-        (property) => property.name === "Primer Número del Globo"
-      )?.value;
+    //   if (properties.length === 0) {
+    //     continue;
+    //   }
 
-      const segundoNumero = properties.find(
-        (property) => property.name === "Segundo Número del Globo"
-      )?.value;
+    //   // obtener los metadatos del producto
+    //   const metafields = await shopifyService.getProductCustomMetafields(
+    //     product_id
+    //   );
 
-      const coloresLatex = properties.find(
-        (property) => property.name === "Colores del Globo de Látex"
-      )?.value;
-
-      if (!(colorNumero && primerNumero && segundoNumero && coloresLatex)) {
-      }
-      // GLOBO DE NUMERO
-      const globoNumeradoId = globosNumerados[colorNumero];
-      const globoNumerado = await shopifyService.getProductById(
-        globoNumeradoId
-      );
-      const globoNumeradoVariantes = globoNumerado.variants;
-
-      for (const variant of globoNumeradoVariantes) {
-        const numero = extractNumber(variant.title);
-        const extPrimerNumero = extractNumber(primerNumero);
-        const extSegundoNumero = extractNumber(segundoNumero);
-        if (numero === extPrimerNumero) {
-          console.log("Encontré la variante del primer número");
-          const precioPrimerNumero = variant.price;
-          console.log("Precio del primer número:", precioPrimerNumero);
-          const inventarioPrimerNumero = variant.inventory_quantity;
-          console.log("Inventario del primer número:", inventarioPrimerNumero);
-          const nuevoInventarioPrimerNumero = inventarioPrimerNumero - quantity;
-
-          console.log(
-            "Nuevo inventario del primer número:",
-            nuevoInventarioPrimerNumero
-          );
-          if (nuevoInventarioPrimerNumero < 0) {
-            console.log("Inventario insuficiente para el primer número");
-          } else {
-            await shopifyService.reducirInventario(
-              variant.id,
-              nuevoInventarioPrimerNumero
-            );
-          }
-        }
-        if (numero === extSegundoNumero) {
-          console.log("Encontré la variante del segundo número");
-          const precioSegundoNumero = variant.price;
-          console.log("Precio del segundo número:", precioSegundoNumero);
-
-          const inventarioSegundoNumero = variant.inventory_quantity;
-          console.log(
-            "Inventario del segundo número:",
-            inventarioSegundoNumero
-          );
-
-          const nuevoInventarioSegundoNumero =
-            inventarioSegundoNumero - quantity;
-
-          console.log(
-            "Nuevo inventario del segundo número:",
-            nuevoInventarioSegundoNumero
-          );
-
-          if (nuevoInventarioSegundoNumero < 0) {
-            console.log("Inventario insuficiente para el segundo número");
-          } else {
-            await shopifyService.reducirInventario(
-              variant.id,
-              nuevoInventarioSegundoNumero
-            );
-          }
-        }
-      }
-
-      // GLOBOS DE LATEX
-
-      if (coloresLatex.length === 0) {
-        console.log("El producto no tiene colores de látex");
-        continue;
-      }
-
-      for (const color of coloresLatex) {
-        const globoRedondoId = globosLatex[color];
-        const globoRedondo = await shopifyService.getProductById(
-          globoRedondoId
-        );
-        const globoRedondoVariantes = globoRedondo.variants;
-
-        for (const variant of globoRedondoVariantes) {
-          const precioGloboRedondo = variant.price;
-          console.log("Precio del globo redondo:", precioGloboRedondo);
-
-          const inventarioGloboRedondo = variant.inventory_quantity;
-          console.log("Inventario del globo redondo:", inventarioGloboRedondo);
-
-          const nuevoInventarioGloboRedondo = inventarioGloboRedondo - quantity;
-          console.log(
-            "Nuevo inventario del globo redondo:",
-            nuevoInventarioGloboRedondo
-          );
-
-          if (nuevoInventarioGloboRedondo < 0) {
-            console.log("Inventario insuficiente para el globo redondo");
-          } else {
-            await shopifyService.reducirInventario(
-              variant.id,
-              nuevoInventarioGloboRedondo
-            );
-          }
-        }
-      }
-    }
-
+    //   const dataExtra = metafields.find(
+    //     (metafield) => metafield.key === "dataExtra"
+    //   );
+    // }
     console.log(JSON.stringify(orderData, null, 2));
 
     return res.status(200).send("Webhook recibido");
