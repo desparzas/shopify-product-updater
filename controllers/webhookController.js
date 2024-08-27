@@ -26,34 +26,153 @@ function verifyHMAC(req, res, next) {
 async function handleOrderCreate(req, res) {
   try {
     const orderData = JSON.parse(req.body);
-    // for (const orderItem of orderData.line_items) {
-    //   console.log(`Procesando producto ${title} en la orden ${orderData.name}`);
-    //   const { id, properties, quantity, title, product_id, variant_id } =
-    //     orderItem;
+    const { line_items, name: orderName } = orderData;
 
-    //   const product = await shopifyService.getProductById(product_id);
+    for (const orderItem of line_items) {
+      const { id, properties, quantity, title, product_id, variant_id } =
+        orderItem;
 
-    //   const { product_type } = product;
+      console.log(`Procesando producto ${title} en la orden ${orderName}`);
 
-    //   // Validar si el producto es un Ramo Personalizado
-    //   if (product_type !== "Ramo Personalizado") {
-    //     continue;
-    //   }
+      // Obteniendo el producto desde Shopify
+      const product = await shopifyService.getProductById(product_id);
+      const { product_type } = product;
 
-    //   if (properties.length === 0) {
-    //     continue;
-    //   }
+      // Validar si el producto es un Ramo Personalizado
+      if (product_type !== "Ramo Personalizado") {
+        continue;
+      }
 
-    //   // obtener los metadatos del producto
-    //   const metafields = await shopifyService.getProductCustomMetafields(
-    //     product_id
-    //   );
+      // Validar si hay propiedades
+      if (properties.length === 0) {
+        continue;
+      }
 
-    //   const dataExtra = metafields.find(
-    //     (metafield) => metafield.key === "dataExtra"
-    //   );
-    // }
-    console.log(JSON.stringify(orderData, null, 2));
+      // Obtener los metadatos del producto
+      const metafields = await shopifyService.getProductCustomMetafields(
+        product_id
+      );
+      const dataExtraM = metafields.find(
+        (metafield) => metafield.key === "data_extra"
+      );
+
+      if (!dataExtraM) {
+        continue;
+      }
+
+      const dataExtra = JSON.parse(dataExtraM.value);
+
+      if (!dataExtra) {
+        continue;
+      }
+
+      const { idVariantPrimerNumero, idVariantSegundoNumero, dataGlobosLatex } =
+        dataExtra;
+
+      // recorrer el objeto dataGlobosLatex
+      for (const t of Object.keys(dataGlobosLatex)) {
+        const { id, cantidad } = dataGlobosLatex[t];
+        const variantB = await shopifyService.getVariant(id);
+        const globoB = await shopifyService.getProductById(variantB.product_id);
+        let listaProductosB = await shopifyService.getProductCustomMetafields(
+          globoB.id
+        );
+        listaProductosB = listaProductosB.find(
+          (metafield) =>
+            metafield.key === "lista_de_productos" &&
+            metafield.namespace === "custom"
+        );
+        listaProductosB = JSON.parse(listaProductosB.value);
+        listaProductosB = listaProductosB.map((producto) => {
+          const id = parseInt(producto.split("/").pop());
+          return id;
+        });
+        const productosB = await Promise.all(
+          listaProductosB.map((id) => shopifyService.getProductById(id))
+        );
+        const productosInventariablesB = productosB.filter(
+          (producto) => producto.variants[0].inventory_management === "shopify"
+        );
+        const globoLatexInsumo = productosInventariablesB[0];
+        const variantInsumoB = globoLatexInsumo.variants[0];
+        await shopifyService.reducirInventario(variantInsumoB.id, cantidad);
+        console.log(
+          "Reduciendo inventario de globo latex",
+          globoLatexInsumo.title,
+          "en",
+          cantidad,
+          "unidades"
+        );
+      }
+
+      const variant1 = await shopifyService.getVariant(idVariantPrimerNumero);
+      const globo1 = await shopifyService.getProductById(variant1.product_id);
+      const option1 = variant1.option1;
+
+      const metafieldsGlobo1 = await shopifyService.getProductCustomMetafields(
+        globo1.id
+      );
+      let listaProductos1 = metafieldsGlobo1.find(
+        (metafield) =>
+          metafield.key === "lista_de_productos" &&
+          metafield.namespace === "custom"
+      );
+      listaProductos1 = JSON.parse(listaProductos1.value);
+      listaProductos1 = listaProductos1.map((producto) => {
+        const id = parseInt(producto.split("/").pop());
+        return id;
+      });
+      const productos1 = await Promise.all(
+        listaProductos1.map((id) => shopifyService.getProductById(id))
+      );
+      const productosInventariables1 = productos1.filter(
+        (producto) => producto.variants[0].inventory_management === "shopify"
+      );
+
+      const globoNumeroInsumo = productosInventariables1[0];
+      const variantInsumo = globoNumeroInsumo.variants.find(
+        (variant) => variant.option1 === option1
+      );
+
+      await shopifyService.reducirInventario(variantInsumo.id, 1);
+
+      const variant2 = await shopifyService.getVariant(idVariantSegundoNumero);
+      const globo2 = await shopifyService.getProductById(variant2.product_id);
+      const option2 = variant2.option1;
+
+      const metafieldsGlobo2 = await shopifyService.getProductCustomMetafields(
+        globo2.id
+      );
+
+      let listaProductos2 = metafieldsGlobo2.find(
+        (metafield) =>
+          metafield.key === "lista_de_productos" &&
+          metafield.namespace === "custom"
+      );
+
+      listaProductos2 = JSON.parse(listaProductos2.value);
+
+      listaProductos2 = listaProductos2.map((producto) => {
+        const id = parseInt(producto.split("/").pop());
+        return id;
+      });
+
+      const productos2 = await Promise.all(
+        listaProductos2.map((id) => shopifyService.getProductById(id))
+      );
+
+      const productosInventariables2 = productos2.filter(
+        (producto) => producto.variants[0].inventory_management === "shopify"
+      );
+
+      const globoNumeroInsumo2 = productosInventariables2[0];
+
+      const variantInsumo2 = globoNumeroInsumo2.variants.find(
+        (variant) => variant.option1 === option2
+      );
+
+      await shopifyService.reducirInventario(variantInsumo2.id, 1);
+    }
 
     return res.status(200).send("Webhook recibido");
   } catch (error) {
