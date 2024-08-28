@@ -95,7 +95,10 @@ async function handleOrderCreate(req, res) {
         );
         const globoLatexInsumo = productosInventariablesB[0];
         const variantInsumoB = globoLatexInsumo.variants[0];
-        await shopifyService.reducirInventario(variantInsumoB.id, cantidad);
+        await shopifyService.reducirInventario(
+          variantInsumoB.id,
+          cantidad * quantity
+        );
         console.log(
           "Reduciendo inventario de globo latex",
           globoLatexInsumo.title,
@@ -134,7 +137,7 @@ async function handleOrderCreate(req, res) {
         (variant) => variant.option1 === option1
       );
 
-      await shopifyService.reducirInventario(variantInsumo.id, 1);
+      await shopifyService.reducirInventario(variantInsumo.id, quantity);
 
       const variant2 = await shopifyService.getVariant(idVariantSegundoNumero);
       const globo2 = await shopifyService.getProductById(variant2.product_id);
@@ -171,7 +174,7 @@ async function handleOrderCreate(req, res) {
         (variant) => variant.option1 === option2
       );
 
-      await shopifyService.reducirInventario(variantInsumo2.id, 1);
+      await shopifyService.reducirInventario(variantInsumo2.id, quantity);
     }
 
     return res.status(200).send("Webhook recibido");
@@ -236,6 +239,6 @@ async function handleProductUpdateRequest(req, res) {
 
 module.exports = {
   verifyHMAC,
-  handleProductUpdateRequest,
+  handleProductUpdate,
   handleOrderCreate,
 };
