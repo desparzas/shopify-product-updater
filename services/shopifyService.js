@@ -70,7 +70,7 @@ async function loadCache() {
 
     console.log("Caché cargado con", productCache.size, "productos.");
 
-    await buildBundlesCache();
+    // await buildBundlesCache();
 
     console.log("Caché de bundles creado con", bundlesCache.size, "bundles.");
   } else {
