@@ -9,6 +9,9 @@ const shopify = new Shopify({
   password: ACCESS_TOKEN,
 });
 
+const productCache = new Map();
+const bundlesCache = new Map();
+
 async function retryWithBackoff(fn, retries = 10, delay = 1000) {
   try {
     return await fn();
@@ -23,47 +26,295 @@ async function retryWithBackoff(fn, retries = 10, delay = 1000) {
   }
 }
 
-async function actualizarVarianteProducto(productoId, variantId, price) {
+async function actualizarVarianteProducto(variantId, price) {
+  return await shopify.productVariant.update(variantId, { price });
+}
+
+async function productCount() {
   return retryWithBackoff(async () => {
-    return await shopify.productVariant.update(variantId, { price });
+    return await shopify.product.count();
   });
+}
+
+async function loadCache() {
+  if (productCache.size === 0) {
+    console.log("Cargando caché de productos...");
+    let allProducts = [];
+    let params = {
+      limit: 250,
+      fields: ["id", "title", "product_type", "variants", "options"],
+      order: "id asc",
+    };
+
+    let hasMoreProducts = true;
+
+    do {
+      let products = await retryWithBackoff(() => {
+        return shopify.product.list(params);
+      });
+
+      products = products.sort((a, b) => a.id - b.id);
+      allProducts = allProducts.concat(products);
+
+      // Agregar productos al caché
+      products.forEach((product) => {
+        addToProductCache(product);
+      });
+
+      if (products.length < params.limit) {
+        hasMoreProducts = false;
+      } else {
+        params.since_id = products[products.length - 1].id;
+      }
+    } while (hasMoreProducts);
+
+    console.log("Caché cargado con", productCache.size, "productos.");
+
+    await buildBundlesCache();
+
+    console.log("Caché de bundles creado con", bundlesCache.size, "bundles.");
+  } else {
+    console.log("El caché de productos ya está cargado.");
+  }
+}
+
+async function obtenerProductosCantidades(productoId) {
+  const metafields = await getProductCustomMetafields(productoId);
+
+  const listaProductosMetafield = metafields.find(
+    (metafield) =>
+      metafield.key === "lista_de_productos" && metafield.namespace === "custom"
+  );
+
+  if (!listaProductosMetafield) {
+    return [];
+  }
+
+  const listaCantidadMetafield = metafields.find(
+    (metafield) =>
+      metafield.key === "lista_de_cantidad" && metafield.namespace === "custom"
+  );
+
+  let listaProductos = JSON.parse(listaProductosMetafield.value).map(
+    (producto) => {
+      const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
+      return productCache.get(id);
+    }
+  );
+
+  const listaCantidad = listaCantidadMetafield
+    ? JSON.parse(listaCantidadMetafield.value).map((cantidad) =>
+        parseFloat(cantidad)
+      )
+    : Array(listaProductos.length).fill(1);
+
+  if (listaCantidad.length !== listaProductos.length) {
+    listaCantidad.fill(1, listaCantidad.length, listaProductos.length);
+  }
+
+  return listaProductos.map((producto, index) => ({
+    producto,
+    cantidad: listaCantidad[index],
+  }));
+}
+
+async function buildBundlesCache() {
+  if (productCache.size === 0) {
+    console.log("No se puede construir el caché de bundles sin productos.");
+    return;
+  }
+
+  const bundlesToCache = [];
+
+  const keys = Array.from(productCache.keys());
+
+  // Itera sobre cada producto en el caché principal de productos
+  for (const key of keys) {
+    const metafields = await getProductCustomMetafields(key);
+
+    if (!metafields) {
+      continue;
+    }
+
+    const listaProductosMetafield = metafields.find(
+      (metafield) =>
+        metafield.key === "lista_de_productos" &&
+        metafield.namespace === "custom"
+    );
+
+    if (listaProductosMetafield) {
+      const listaCantidadMetafield = metafields.find(
+        (metafield) =>
+          metafield.key === "lista_de_cantidad" &&
+          metafield.namespace === "custom"
+      );
+
+      let listaProductos = JSON.parse(listaProductosMetafield.value).map(
+        (producto) => {
+          const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
+          return id;
+        }
+      );
+
+      const listaCantidad = listaCantidadMetafield
+        ? JSON.parse(listaCantidadMetafield.value).map((cantidad) =>
+            parseFloat(cantidad)
+          )
+        : Array(listaProductos.length).fill(1);
+
+      if (listaCantidad.length !== listaProductos.length) {
+        listaCantidad.fill(1, listaCantidad.length, listaProductos.length);
+      }
+
+      bundlesToCache.push({
+        id: key,
+        productos: listaProductos,
+        cantidades: listaCantidad,
+      });
+    }
+  }
+
+  for (const bundle of bundlesToCache) {
+    bundlesCache.set(bundle.id, {
+      productos: bundle.productos,
+      cantidades: bundle.cantidades,
+    });
+  }
+
+  console.log("Caché de bundles creado con", bundlesCache.size, "bundles.");
 }
 
 async function listProducts() {
-  let allProducts = [];
-  let params = {
-    limit: 250,
-    fields: ["id", "title", "product_type", "variants", "options"],
-    order: "id asc",
-  };
-
-  console.log("Obteniendo productos...");
-  let hasMoreProducts = true;
-
-  do {
-    // obtener los products ordenados de 10 en 10 ordenados por id
-    let products = await retryWithBackoff(() => {
-      return shopify.product.list(params);
-    });
-
-    // ordenar los productos por id
-    products = products.sort((a, b) => a.id - b.id);
-    allProducts = allProducts.concat(products);
-
-    if (products.length < params.limit) {
-      hasMoreProducts = false;
-    } else {
-      params.since_id = products[products.length - 1].id;
-    }
-  } while (hasMoreProducts);
-
-  return allProducts;
+  await loadCache();
+  return Array.from(productCache.values());
 }
 
 async function getProductById(id) {
-  return retryWithBackoff(async () => {
+  if (productCache.has(id)) {
+    console.log(`Producto ${id} encontrado en el caché.`);
+    return productCache.get(id);
+  }
+
+  const product = await retryWithBackoff(async () => {
     return await shopify.product.get(id);
   });
+
+  addToProductCache(product);
+
+  console.log(`Producto ${id} obtenido de Shopify y añadido al caché.`);
+  return product;
+}
+
+async function processProduct(product) {
+  if (productCache.has(product.id)) {
+    updateProductInCache(product);
+    await updateBundleToCache(product);
+  } else {
+    addToProductCache(product);
+    await addBundleInCache(product);
+  }
+}
+
+async function addBundleInCache(product) {
+  const metafields = await getProductCustomMetafields(product.id);
+
+  if (!metafields) {
+    return;
+  }
+
+  const listaProductosMetafield = metafields.find(
+    (metafield) =>
+      metafield.key === "lista_de_productos" && metafield.namespace === "custom"
+  );
+
+  if (!listaProductosMetafield) {
+    return;
+  }
+
+  const listaCantidadMetafield = metafields.find(
+    (metafield) =>
+      metafield.key === "lista_de_cantidad" && metafield.namespace === "custom"
+  );
+
+  let listaProductos = JSON.parse(listaProductosMetafield.value).map(
+    (producto) => {
+      const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
+      return id;
+    }
+  );
+
+  const listaCantidad = listaCantidadMetafield
+    ? JSON.parse(listaCantidadMetafield.value).map((cantidad) =>
+        parseFloat(cantidad)
+      )
+    : Array(listaProductos.length).fill(1);
+
+  if (listaCantidad.length !== listaProductos.length) {
+    listaCantidad.fill(1, listaCantidad.length, listaProductos.length);
+  }
+
+  bundlesCache.set(product.id, {
+    productos: listaProductos,
+    cantidades: listaCantidad,
+  });
+}
+
+async function updateBundleToCache(product) {
+  const metafields = await getProductCustomMetafields(product.id);
+
+  if (!metafields) {
+    // eliminar bundle
+    bundlesCache.delete(product.id);
+    return;
+  }
+
+  const listaProductosMetafield = metafields.find(
+    (metafield) =>
+      metafield.key === "lista_de_productos" && metafield.namespace === "custom"
+  );
+
+  if (!listaProductosMetafield) {
+    // eliminar bundle
+    bundlesCache.delete(product.id);
+    return;
+  }
+
+  const listaCantidadMetafield = metafields.find(
+    (metafield) =>
+      metafield.key === "lista_de_cantidad" && metafield.namespace === "custom"
+  );
+
+  let listaProductos = JSON.parse(listaProductosMetafield.value).map(
+    (producto) => {
+      const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
+      return id;
+    }
+  );
+
+  const listaCantidad = listaCantidadMetafield
+    ? JSON.parse(listaCantidadMetafield.value).map((cantidad) =>
+        parseFloat(cantidad)
+      )
+    : Array(listaProductos.length).fill(1);
+
+  if (listaCantidad.length !== listaProductos.length) {
+    listaCantidad.fill(1, listaCantidad.length, listaProductos.length);
+  }
+
+  bundlesCache.set(product.id, {
+    productos: listaProductos,
+    cantidades: listaCantidad,
+  });
+
+  console.log("Bundle actualizado en el caché.");
+}
+
+function addToProductCache(product) {
+  productCache.set(product.id, product);
+}
+
+function updateProductInCache(product) {
+  productCache.set(product.id, product);
 }
 
 async function getProductCustomMetafields(productId) {
@@ -78,102 +329,26 @@ async function getProductCustomMetafields(productId) {
   });
 }
 
-async function getBundlesWithProduct(productId) {
+function getBundlesWithProduct(productId) {
   try {
-    let products = await listProducts();
-
-    console.log("Productos obtenidos:", products.length);
-
-    for (const product of products) {
-      const metafields = await getProductCustomMetafields(product.id);
-      console.log("Obteniendo metafields para el producto", product.title);
-      product.metafields = metafields;
-    }
-
-    let bundles = products.filter((product) => {
-      return (
-        product.metafields.length > 0 &&
-        product.metafields.some(
-          (metafield) =>
-            metafield.key === "lista_de_productos" &&
-            metafield.namespace === "custom"
-        )
-      );
-    });
-
-    bundles = bundles.filter((bundle) => {
-      const metafield = bundle.metafields.find(
-        (metafield) => metafield.key === "lista_de_productos"
-      );
-      let listaProductos = JSON.parse(metafield.value);
-      const t = listaProductos.some((producto) => {
-        const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
-        return id === productId;
-      });
-      return t;
-    });
-
-    bundles = bundles.map((bundle) => {
-      const { metafields } = bundle;
-      const listaProductosMetafield = metafields.find(
-        (metafield) =>
-          metafield.key === "lista_de_productos" &&
-          metafield.namespace === "custom"
-      );
-
-      const listaCantidadMetafield = metafields.find(
-        (metafield) =>
-          metafield.key === "lista_de_cantidad" &&
-          metafield.namespace === "custom"
-      );
-
-      let listaProductos = JSON.parse(listaProductosMetafield.value);
-      listaProductos = listaProductos.map((producto) => {
-        const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
-        return products.find((product) => product.id === id);
-      });
-
-      let listaCantidad;
-
-      if (listaCantidadMetafield) {
-        listaCantidad = JSON.parse(listaCantidadMetafield.value);
-        listaCantidad = listaCantidad.map((cantidad) => parseFloat(cantidad));
-        if (listaCantidad.length !== listaProductos.length) {
-          listaCantidad = Array(listaProductos.length).fill(1);
-        }
-      } else {
-        listaCantidad = Array(listaProductos.length).fill(1);
+    const id = parseInt(productId, 10);
+    const filteredBundles = new Map();
+    for (const [bundleId, bundle] of bundlesCache.entries()) {
+      const productos = bundle.productos;
+      const cantidades = bundle.cantidades;
+      const index = productos.indexOf(id);
+      if (index !== -1) {
+        filteredBundles.set(bundleId, {
+          productos: productos,
+          cantidades: cantidades,
+        });
       }
-
-      const b = {
-        ...bundle,
-        productos: listaProductos,
-        cantidades: listaCantidad,
-      };
-
-      return b;
-    });
-
-    return { bundles };
+    }
+    return filteredBundles;
   } catch (error) {
     console.error("Error obteniendo los bundles con el producto", error);
-    return [];
+    return new Map();
   }
-}
-
-async function obtenerBundlesContienenProducto(productId, bundleType) {
-  return retryWithBackoff(async () => {
-    let ramos = await getProductByProductType(bundleType);
-    ramos = await Promise.all(
-      ramos.map(async (ramo) => {
-        ramo.productos = await getProductosFromProducto(ramo.id);
-        return ramo;
-      })
-    );
-    return ramos.filter((ramo) =>
-      ramo.productos.some((producto) => producto.producto.id === productId)
-    );
-  });
 }
 
 function isDefaultOption(options) {
@@ -189,122 +364,26 @@ function isSimpleProduct(product) {
   return product.variants.length === 1 && isDefaultOption(product.options);
 }
 
-async function getBundlesWithProduct(productId) {
+async function actualizarBundlesDeProducto(productData) {
   try {
-    const id = parseInt(productId, 10);
-    const product = await getProductById(id);
-    if (!product) {
-      console.log(
-        "Producto no encontrado en la base de datos desde la función getBundlesWithProduct"
-      );
-      return [];
-    }
+    await loadCache();
+    await processProduct(productData);
+    console.log("Actualizando bundles del producto ", productData.title);
+    const bundlesList = getBundlesWithProduct(productData.id);
 
-    // Obtener todos los productos y sus metafields en paralelo
-    const products = await listProducts();
-    console.log("Productos obtenidos:", products.length);
+    const bundleUpdatePromises = [];
 
-    // Mapear productos por ID para búsquedas rápidas
-    const productMap = new Map(products.map((p) => [p.id, p]));
+    console.log("Bundles encontrados:", bundlesList.size);
 
-    // Obtener metafields de todos los productos
-    const metafieldsPromises = products.map((p) => {
-      console.log("Obteniendo metafields para el producto:", p.title);
-      return getProductCustomMetafields(p.id);
-    });
-    const allMetafields = await Promise.all(metafieldsPromises);
+    for (const [bundleId, bundle] of bundlesList.entries()) {
+      const productos = bundle.productos.map((id) => productCache.get(id));
+      const cantidades = bundle.cantidades;
 
-    // Asignar metafields a cada producto
-    products.forEach((product, index) => {
-      product.metafields = allMetafields[index];
-    });
+      const bundleProduct = productCache.get(bundleId);
+      const variants = bundleProduct.variants;
+      const options = bundleProduct.options;
 
-    // Filtrar bundles basados en los metafields
-    const bundles = products
-      .filter((product) =>
-        product.metafields.some(
-          (metafield) =>
-            metafield.key === "lista_de_productos" &&
-            metafield.namespace === "custom"
-        )
-      )
-      .filter((bundle) => {
-        const metafield = bundle.metafields.find(
-          (metafield) => metafield.key === "lista_de_productos"
-        );
-        const listaProductos = JSON.parse(metafield.value);
-        return listaProductos.some((producto) => {
-          const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
-          return id === id;
-        });
-      });
-
-    // Procesar cada bundle
-    const processedBundles = bundles.map((bundle) => {
-      const { metafields } = bundle;
-      const listaProductosMetafield = metafields.find(
-        (metafield) =>
-          metafield.key === "lista_de_productos" &&
-          metafield.namespace === "custom"
-      );
-
-      const listaCantidadMetafield = metafields.find(
-        (metafield) =>
-          metafield.key === "lista_de_cantidad" &&
-          metafield.namespace === "custom"
-      );
-
-      let listaProductos = JSON.parse(listaProductosMetafield.value);
-      listaProductos = listaProductos
-        .map((producto) => {
-          const id = parseInt(producto.replace(/[^0-9]/g, ""), 10);
-          return productMap.get(id);
-        })
-        .filter(Boolean); // Filtrar productos no encontrados
-
-      let listaCantidad;
-      if (listaCantidadMetafield) {
-        listaCantidad = JSON.parse(listaCantidadMetafield.value);
-        listaCantidad = listaCantidad.map((cantidad) => parseFloat(cantidad));
-        if (listaCantidad.length !== listaProductos.length) {
-          listaCantidad = Array(listaProductos.length).fill(1);
-        }
-      } else {
-        listaCantidad = Array(listaProductos.length).fill(1);
-      }
-
-      return {
-        ...bundle,
-        productos: listaProductos,
-        cantidades: listaCantidad,
-      };
-    });
-
-    return { bundles: processedBundles };
-  } catch (error) {
-    console.error("Error obteniendo los bundles con el producto", error);
-    return [];
-  }
-}
-
-async function actualizarBundlesDeProducto(productId) {
-  try {
-    const id = parseInt(productId, 10);
-    const product = await getProductById(id);
-    if (!product) {
-      throw new Error(
-        "Producto no encontrado en la base de datos desde la función updateBundles"
-      );
-    }
-    console.log("Actualizando bundles del producto ", product.title);
-    const { bundles } = await getBundlesWithProduct(id);
-    for (const bundle of bundles) {
-      const { options, variants, productos, cantidades, title } = bundle;
-
-      console.log("Actualizando bundle:", title);
-
-      if (isSimpleProduct(bundle)) {
-        console.log("El bundle es un producto simple");
+      if (isSimpleProduct(bundleProduct)) {
         const precioActual = variants[0].price;
         let precioTotal = 0;
 
@@ -315,191 +394,509 @@ async function actualizarBundlesDeProducto(productId) {
           precioTotal += cantidad * precio;
         }
 
-        console.log("ACTUALIZANDO: ", precioActual, "-->", precioTotal);
+        if (precioTotal != precioActual) {
+          console.log(
+            "Actualizando precio de bundle:",
+            precioActual,
+            "-->",
+            precioTotal
+          );
 
-        if (precioTotal !== precioActual) {
-          console.log("Actualizando el precio del bundle");
-          await retryWithBackoff(() => {
-            return shopify.productVariant.update(variants[0].id, {
-              price: precioTotal,
-            });
-          });
+          const variantToUpdate = variants[0];
+          bundleUpdatePromises.push(() =>
+            actualizarVarianteProducto(variantToUpdate.id, precioTotal)
+          );
         }
       } else {
         if (options.length === 1) {
-          console.log("El bundle tiene una opción");
-
-          // Precalcular precios de variantes por opción1
-          const preciosPorOpcion1 = new Map();
-          productos.forEach((producto) => {
-            producto.variants.forEach((v) => {
-              if (!preciosPorOpcion1.has(v.option1)) {
-                preciosPorOpcion1.set(v.option1, v.price);
-              }
-            });
-          });
-
-          // Array para almacenar todas las promesas de actualización
-          const updatePromises = [];
+          // Mapea los precios de la primera variante de cada producto
+          const preciosPrimerasVariantes = productos.map(
+            (producto) => producto.variants[0].price
+          );
 
           for (const variant of variants) {
             const { option1 } = variant;
-            const precioTemp = preciosPorOpcion1.get(option1);
+            const precioVariant = variant.price;
 
-            if (!precioTemp) {
-              console.log(
-                `No se encontró un precio para la opción: ${option1}`
-              );
+            // Encuentra el producto que determina la variante
+            const productoDeterminaVariante = productos.find((p) =>
+              p.variants.some((v) => v.option1 === option1)
+            );
+
+            if (!productoDeterminaVariante) {
               continue;
             }
 
-            const precioTotal = productos.reduce((total, p, i) => {
+            const variantsProductoDeterminaVariante =
+              productoDeterminaVariante.variants;
+
+            // Encuentra el precio de la variante que coincide con la opción
+            const precioDeterminaVariante =
+              variantsProductoDeterminaVariante.find(
+                (v) => v.option1 === option1
+              ).price;
+
+            // Calcula el precio total
+            let precioTotal = 0;
+
+            for (let i = 0; i < productos.length; i++) {
+              const producto = productos[i];
               const cantidad = cantidades[i];
-              const precio = p.variants[0].price;
+              const precioPrimerVariante = preciosPrimerasVariantes[i];
 
-              return (
-                total +
-                cantidad *
-                  (p.variants.some((v) => v.option1 === option1)
-                    ? precioTemp
-                    : precio)
+              if (producto.id === productoDeterminaVariante.id) {
+                precioTotal += cantidad * precioDeterminaVariante;
+              } else {
+                precioTotal += cantidad * precioPrimerVariante;
+              }
+            }
+
+            if (precioVariant != precioTotal) {
+              console.log(
+                "Actualizando precio de bundle con opción",
+                option1,
+                ":",
+                precioVariant,
+                "-->",
+                precioTotal
               );
-            }, 0);
 
-            if (precioTotal !== variant.price) {
-              console.log("ACTUALIZANDO: ", variant.price, "-->", precioTotal);
-              const updatePromise = retryWithBackoff(() => {
-                return shopify.productVariant.update(variant.id, {
-                  price: precioTotal,
-                });
-              });
-              updatePromises.push(updatePromise);
+              bundleUpdatePromises.push(() =>
+                actualizarVarianteProducto(variant.id, precioTotal)
+              );
             }
           }
-
-          // Esperar a que todas las actualizaciones se completen
-          await Promise.all(updatePromises);
         } else if (options.length === 2) {
-          console.log("El bundle tiene dos opciones");
+          console.log("El bundle ", bundleProduct.title, "tiene dos opciones");
+
+          const preciosPrimerasVariantes = productos.map(
+            (producto) => producto.variants[0].price
+          );
+
           for (const variant of variants) {
             const { option1, option2 } = variant;
-            console.log("Nombre de la variante del paquete:", option1, option2);
-            let precioTemp;
-            const producto2Options = productos.find((producto) => {
-              const { variants } = producto;
-              const encontradoVariant = variants.find(
+
+            const productoDeterminaVariante = productos.find((p) =>
+              p.variants.some(
                 (v) => v.option1 === option1 && v.option2 === option2
-              );
-              if (encontradoVariant) {
-                precioTemp = encontradoVariant.price;
-              }
-              return encontradoVariant;
-            });
-            if (producto2Options && precioTemp) {
+              )
+            );
+
+            if (productoDeterminaVariante) {
+              const variantsProductoDeterminaVariante =
+                productoDeterminaVariante.variants;
+
+              const precioDeterminaVariante =
+                variantsProductoDeterminaVariante.find(
+                  (v) => v.option1 === option1 && v.option2 === option2
+                ).price;
+
               let precioTotal = 0;
+
               for (let i = 0; i < productos.length; i++) {
-                const p = productos[i];
+                const producto = productos[i];
                 const cantidad = cantidades[i];
-                let precio;
-                if (p.id === producto2Options.id) {
-                  precio = precioTemp;
+                const precioPrimerVariante = preciosPrimerasVariantes[i];
+
+                if (producto.id === productoDeterminaVariante.id) {
+                  precioTotal += cantidad * precioDeterminaVariante;
                 } else {
-                  precio = p.variants[0].price;
+                  precioTotal += cantidad * precioPrimerVariante;
                 }
-                precioTotal += cantidad * precio;
               }
 
-              if (precioTotal != variant.price) {
+              if (variant.price != precioTotal) {
                 console.log(
-                  "ACTUALIZANDO: ",
+                  "Actualizando precio de bundle ",
+                  bundleProduct.title,
+                  "con opciones",
+                  option1,
+                  option2,
+                  ":",
                   variant.price,
                   "-->",
                   precioTotal
                 );
-                await retryWithBackoff(() => {
-                  return shopify.productVariant.update(variant.id, {
-                    price: precioTotal,
-                  });
-                });
+                bundleUpdatePromises.push(() =>
+                  actualizarVarianteProducto(variant.id, precioTotal)
+                );
               }
             } else {
-              let precio1;
-              const producto1Option1 = productos.find((producto) => {
-                const { variants } = producto;
-                const encontradoVariant = variants.find(
+              const producto1 = productos.find((p) =>
+                p.variants.some((v) => v.option1 === option1)
+              );
+
+              const producto2 = productos.find((p) =>
+                p.variants.some((v) => v.option1 === option2)
+              );
+
+              if (producto1 && producto2) {
+                const variantsProducto1 = producto1.variants;
+                const variantsProducto2 = producto2.variants;
+
+                const precioDeterminaVariante1 = variantsProducto1.find(
                   (v) => v.option1 === option1
-                );
-                if (encontradoVariant) {
-                  precio1 = encontradoVariant.price;
-                  console.log("Precio del producto 1:", precio1);
-                  console.log(
-                    "PRODUCTO 1 - VARIANTE ENCONTRADA:",
-                    producto.title,
-                    encontradoVariant.option1
-                  );
-                }
+                ).price;
 
-                return encontradoVariant;
-              });
-
-              let precio2;
-              const producto1Option2 = productos.find((producto) => {
-                const { variants } = producto;
-                const encontradoVariant = variants.find(
+                const precioDeterminaVariante2 = variantsProducto2.find(
                   (v) => v.option1 === option2
-                );
-                if (encontradoVariant) {
-                  precio2 = encontradoVariant.price;
-                  console.log("Precio del producto 2:", precio2);
-                  console.log(
-                    "PRODUCTO 2 - VARIANTE ENCONTRADA:",
-                    producto.title,
-                    encontradoVariant.option1
-                  );
-                }
+                ).price;
 
-                return encontradoVariant;
-              });
-
-              if (producto1Option1 && producto1Option2 && precio1 && precio2) {
                 let precioTotal = 0;
+
                 for (let i = 0; i < productos.length; i++) {
-                  const p = productos[i];
+                  const producto = productos[i];
                   const cantidad = cantidades[i];
-                  let precio;
-                  if (p.id === producto1Option1.id) {
-                    precio = precio1;
-                  } else if (p.id === producto1Option2.id) {
-                    precio = precio2;
+                  const precioPrimerVariante = preciosPrimerasVariantes[i];
+
+                  if (producto.id === producto1.id) {
+                    precioTotal += cantidad * precioDeterminaVariante1;
+                  } else if (producto.id === producto2.id) {
+                    precioTotal += cantidad * precioDeterminaVariante2;
                   } else {
-                    precio = p.variants[0].price;
+                    precioTotal += cantidad * precioPrimerVariante;
                   }
-                  precioTotal += cantidad * precio;
                 }
 
-                if (precioTotal != variant.price) {
+                if (variant.price != precioTotal) {
                   console.log(
-                    "ACTUALIZANDO: ",
+                    "Actualizando precio de bundle ",
+                    bundleProduct.title,
+                    "con opciones",
+                    option1,
+                    option2,
+                    ":",
                     variant.price,
                     "-->",
                     precioTotal
                   );
-                  await retryWithBackoff(() => {
-                    return shopify.productVariant.update(variant.id, {
-                      price: precioTotal,
-                    });
-                  });
+
+                  bundleUpdatePromises.push(() =>
+                    actualizarVarianteProducto(variant.id, precioTotal)
+                  );
                 }
+              } else {
+                console.log(
+                  "No se encontró el producto que determina la variante"
+                );
+                break;
               }
             }
           }
         } else if (options.length === 3) {
-          console.log("El bundle tiene tres opciones");
+          console.log("El bundle ", bundleProduct.title, "tiene tres opciones");
+
+          const preciosPrimerasVariantes = productos.map(
+            (producto) => producto.variants[0].price
+          );
+
+          for (const variant of variants) {
+            const { option1, option2, option3 } = variant;
+
+            const productoDetermina3Variante = productos.find((p) =>
+              p.variants.some(
+                (v) =>
+                  v.option1 === option1 &&
+                  v.option2 === option2 &&
+                  v.option3 === option3
+              )
+            );
+
+            if (productoDetermina3Variante) {
+              const variantsProductoDetermina3Variante =
+                productoDetermina3Variante.variants;
+
+              const precioDetermina3Variante =
+                variantsProductoDetermina3Variante.find(
+                  (v) =>
+                    v.option1 === option1 &&
+                    v.option2 === option2 &&
+                    v.option3 === option3
+                ).price;
+
+              let precioTotal = 0;
+
+              for (let i = 0; i < productos.length; i++) {
+                const producto = productos[i];
+                const cantidad = cantidades[i];
+                const precioPrimerVariante = preciosPrimerasVariantes[i];
+
+                if (producto.id === productoDetermina3Variante.id) {
+                  precioTotal += cantidad * precioDetermina3Variante;
+                } else {
+                  precioTotal += cantidad * precioPrimerVariante;
+                }
+              }
+
+              if (variant.price != precioTotal) {
+                console.log(
+                  "Actualizando precio de bundle con opciones",
+                  option1,
+                  option2,
+                  option3,
+                  ":",
+                  variant.price,
+                  "-->",
+                  precioTotal
+                );
+                bundleUpdatePromises.push(() =>
+                  actualizarVarianteProducto(variant.id, precioTotal)
+                );
+              }
+            } else {
+              const productoDetermina2Variante = productos.find((p) =>
+                p.variants.some(
+                  (v) => v.option1 === option1 && v.option2 === option2
+                )
+              );
+
+              const productoDetermina1Variante = productos.find((p) =>
+                p.variants.some((v) => v.option1 === option3)
+              );
+
+              if (productoDetermina2Variante && productoDetermina1Variante) {
+                const variantsProductoDetermina2Variante =
+                  productoDetermina2Variante.variants;
+                const variantsProductoDetermina1Variante =
+                  productoDetermina1Variante.variants;
+
+                const precioDetermina2Variante =
+                  variantsProductoDetermina2Variante.find(
+                    (v) => v.option1 === option1 && v.option2 === option2
+                  ).price;
+
+                const precioDetermina1Variante =
+                  variantsProductoDetermina1Variante.find(
+                    (v) => v.option1 === option3
+                  ).price;
+
+                let precioTotal = 0;
+
+                for (let i = 0; i < productos.length; i++) {
+                  const producto = productos[i];
+                  const cantidad = cantidades[i];
+                  const precioPrimerVariante = preciosPrimerasVariantes[i];
+
+                  if (producto.id === productoDetermina2Variante.id) {
+                    precioTotal += cantidad * precioDetermina2Variante;
+                  } else if (producto.id === productoDetermina1Variante.id) {
+                    precioTotal += cantidad * precioDetermina1Variante;
+                  } else {
+                    precioTotal += cantidad * precioPrimerVariante;
+                  }
+                }
+
+                if (variant.price != precioTotal) {
+                  console.log(
+                    "Actualizando precio de bundle con opciones",
+                    option1,
+                    option2,
+                    option3,
+                    ":",
+                    variant.price,
+                    "-->",
+                    precioTotal
+                  );
+                  bundleUpdatePromises.push(() =>
+                    actualizarVarianteProducto(variant.id, precioTotal)
+                  );
+                }
+              } else {
+                const productoDetermina1VarianteAlt = productos.find((p) =>
+                  p.variants.some(
+                    (v) => v.option1 === option1 && v.option2 === option3
+                  )
+                );
+
+                const productoDetermina2VarianteAlt = productos.find((p) =>
+                  p.variants.some((v) => v.option1 === option2)
+                );
+
+                if (
+                  productoDetermina1VarianteAlt &&
+                  productoDetermina2VarianteAlt
+                ) {
+                  const variantsProductoDetermina1VarianteAlt =
+                    productoDetermina1VarianteAlt.variants;
+                  const variantsProductoDetermina2VarianteAlt =
+                    productoDetermina2VarianteAlt.variants;
+
+                  const precioDetermina1VarianteAlt =
+                    variantsProductoDetermina1VarianteAlt.find(
+                      (v) => v.option1 === option1 && v.option2 === option3
+                    ).price;
+
+                  const precioDetermina2VarianteAlt =
+                    variantsProductoDetermina2VarianteAlt.find(
+                      (v) => v.option1 === option2
+                    ).price;
+
+                  let precioTotal = 0;
+
+                  for (let i = 0; i < productos.length; i++) {
+                    const producto = productos[i];
+                    const cantidad = cantidades[i];
+                    const precioPrimerVariante = preciosPrimerasVariantes[i];
+
+                    if (producto.id === productoDetermina1VarianteAlt.id) {
+                      precioTotal += cantidad * precioDetermina1VarianteAlt;
+                    } else if (
+                      producto.id === productoDetermina2VarianteAlt.id
+                    ) {
+                      precioTotal += cantidad * precioDetermina2VarianteAlt;
+                    } else {
+                      precioTotal += cantidad * precioPrimerVariante;
+                    }
+                  }
+
+                  if (variant.price != precioTotal) {
+                    console.log(
+                      "Actualizando precio de bundle con opciones",
+                      option1,
+                      option2,
+                      option3,
+                      ":",
+                      variant.price,
+                      "-->",
+                      precioTotal
+                    );
+                    bundleUpdatePromises.push(() =>
+                      actualizarVarianteProducto(variant.id, precioTotal)
+                    );
+                  }
+                } else {
+                  const productoDetermina1VarianteAlt2 = productos.find((p) =>
+                    p.variants.some(
+                      (v) => v.option1 === option2 && v.option2 === option3
+                    )
+                  );
+
+                  const productoDetermina2VarianteAlt2 = productos.find((p) =>
+                    p.variants.some((v) => v.option1 === option1)
+                  );
+
+                  if (
+                    productoDetermina1VarianteAlt2 &&
+                    productoDetermina2VarianteAlt2
+                  ) {
+                    const variantsProductoDetermina1VarianteAlt2 =
+                      productoDetermina1VarianteAlt2.variants;
+                    const variantsProductoDetermina2VarianteAlt2 =
+                      productoDetermina2VarianteAlt2.variants;
+
+                    const precioDetermina1VarianteAlt2 =
+                      variantsProductoDetermina1VarianteAlt2.find(
+                        (v) => v.option1 === option2 && v.option2 === option3
+                      ).price;
+
+                    const precioDetermina2VarianteAlt2 =
+                      variantsProductoDetermina2VarianteAlt2.find(
+                        (v) => v.option1 === option1
+                      ).price;
+
+                    let precioTotal = 0;
+
+                    for (let i = 0; i < productos.length; i++) {
+                      const producto = productos[i];
+                      const cantidad = cantidades[i];
+                      const precioPrimerVariante = preciosPrimerasVariantes[i];
+
+                      if (producto.id === productoDetermina1VarianteAlt2.id) {
+                        precioTotal += cantidad * precioDetermina1VarianteAlt2;
+                      } else if (
+                        producto.id === productoDetermina2VarianteAlt2.id
+                      ) {
+                        precioTotal += cantidad * precioDetermina2VarianteAlt2;
+                      } else {
+                        precioTotal += cantidad * precioPrimerVariante;
+                      }
+                    }
+
+                    if (variant.price != precioTotal) {
+                      console.log(
+                        "Actualizando precio de bundle con opciones",
+                        option1,
+                        option2,
+                        option3,
+                        ":",
+                        variant.price,
+                        "-->",
+                        precioTotal
+                      );
+                      bundleUpdatePromises.push(() =>
+                        actualizarVarianteProducto(variant.id, precioTotal)
+                      );
+                    }
+                  } else {
+                    const p1 = productos.find((p) =>
+                      p.variants.some((v) => v.option1 === option1)
+                    );
+                    const p2 = productos.find((p) =>
+                      p.variants.some((v) => v.option1 === option2)
+                    );
+                    const p3 = productos.find((p) =>
+                      p.variants.some((v) => v.option1 === option3)
+                    );
+
+                    if (p1 && p2 && p3) {
+                      const v1 = p1.variants.find((v) => v.option1 === option1);
+                      const v2 = p2.variants.find((v) => v.option1 === option2);
+                      const v3 = p3.variants.find((v) => v.option1 === option3);
+
+                      let precioTotal = 0;
+
+                      for (let i = 0; i < productos.length; i++) {
+                        const producto = productos[i];
+                        const cantidad = cantidades[i];
+                        const precioPrimerVariante =
+                          preciosPrimerasVariantes[i];
+
+                        if (producto.id === p1.id) {
+                          precioTotal += cantidad * v1.price;
+                        } else if (producto.id === p2.id) {
+                          precioTotal += cantidad * v2.price;
+                        } else if (producto.id === p3.id) {
+                          precioTotal += cantidad * v3.price;
+                        } else {
+                          precioTotal += cantidad * precioPrimerVariante;
+                        }
+                      }
+
+                      if (variant.price != precioTotal) {
+                        console.log(
+                          "Actualizando precio de bundle con opciones",
+                          option1,
+                          option2,
+                          option3,
+                          ":",
+                          variant.price,
+                          "-->",
+                          precioTotal
+                        );
+                        bundleUpdatePromises.push(() =>
+                          actualizarVarianteProducto(variant.id, precioTotal)
+                        );
+                      }
+                    } else {
+                      console.log(
+                        "No se encontró el producto que determina la variante"
+                      );
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
-
-      console.log("_".repeat(50));
     }
+
+    console.log(
+      "Cantidad de variantes a actualizar:",
+      bundleUpdatePromises.length
+    );
+    await actualizarBundles(bundleUpdatePromises);
   } catch (error) {
     console.log("Error actualizando bundles: ", error);
   }
@@ -517,12 +914,30 @@ async function getVariant(variantId) {
   }
 }
 
+async function actualizarBundles(bundleUpdatePromises) {
+  const results = [];
+
+  for (let i = 0; i < bundleUpdatePromises.length; i += 5) {
+    console.log("Actualizando bundles en lote...");
+    const batch = bundleUpdatePromises.slice(i, i + 5);
+
+    const batchResults = await Promise.all(
+      batch.map((promiseFn) => retryWithBackoff(promiseFn))
+    );
+    results.push(...batchResults);
+  }
+
+  console.log("Actualización de bundles completada.");
+
+  return results;
+}
+
 module.exports = {
   listProducts,
   getProductById,
   getProductCustomMetafields,
-  obtenerBundlesContienenProducto,
   actualizarVarianteProducto,
   getVariant,
   actualizarBundlesDeProducto,
+  productCount,
 };

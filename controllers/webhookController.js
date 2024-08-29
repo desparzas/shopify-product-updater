@@ -51,20 +51,20 @@ async function handleProductUpdate(req, res) {
     // ESCRIBIR LO RECIBIDO EN EL WEBHOOK
     console.log(JSON.stringify(productData, null, 2));
 
-    // console.log(
-    //   "Procesando webhook para el producto",
-    //   productData.id,
-    //   "-",
-    //   productData.title
-    // );
-    // if (processedProducts.has(productData.id)) {
-    //   return res.status(200).send("Evento ya procesado recientemente.");
-    // }
+    console.log(
+      "Procesando webhook para el producto",
+      productData.id,
+      "-",
+      productData.title
+    );
+    if (processedProducts.has(productData.id)) {
+      return res.status(200).send("Evento ya procesado recientemente.");
+    }
 
-    // processedProducts.add(productData.id);
-    // setTimeout(() => processedProducts.delete(productData.id), 120000);
+    processedProducts.add(productData.id);
+    setTimeout(() => processedProducts.delete(productData.id), 120000);
 
-    // await shopifyService.actualizarBundlesDeProducto(productData.id);
+    await shopifyService.actualizarBundlesDeProducto(productData);
 
     console.log("Webhook procesado para el producto ", productData.title);
     return res.status(200).send("Webhook recibido");
@@ -81,5 +81,5 @@ async function handleProductUpdateRequest(req, res) {
 
 module.exports = {
   verifyHMAC,
-  handleProductUpdate,
+  handleProductUpdateRequest,
 };
