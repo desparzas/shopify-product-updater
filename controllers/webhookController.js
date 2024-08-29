@@ -49,7 +49,7 @@ async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
     // ESCRIBIR LO RECIBIDO EN EL WEBHOOK
-    console.log(JSON.stringify(productData, null, 2));
+    // console.log(JSON.stringify(productData, null, 2));
 
     console.log(
       "Procesando webhook para el producto",
