@@ -351,6 +351,10 @@ function getBundlesWithProduct(productId) {
   }
 }
 
+async function updateProductVariants(productId, variants) {
+  return await shopify.product.update(productId, { variants });
+}
+
 function isDefaultOption(options) {
   if (options.length !== 1) return false;
   const option = options[0];
@@ -383,6 +387,8 @@ async function actualizarBundlesDeProducto(productData) {
       const variants = bundleProduct.variants;
       const options = bundleProduct.options;
 
+      let variantsTemp = JSON.parse(JSON.stringify(variants));
+      let actualizarPrecio = false;
       if (isSimpleProduct(bundleProduct)) {
         const precioActual = variants[0].price;
         let precioTotal = 0;
@@ -394,31 +400,39 @@ async function actualizarBundlesDeProducto(productData) {
           precioTotal += cantidad * precio;
         }
 
-        if (precioTotal != precioActual) {
+        const precioTotalString = precioTotal.toFixed(2);
+
+        if (precioTotalString != precioActual) {
+          variantsTemp[0].price = precioTotalString;
           console.log(
-            "Actualizando precio de bundle:",
+            "Actualizando ",
+            bundleProduct.title,
+            ":",
             precioActual,
             "-->",
-            precioTotal
+            precioTotalString
           );
+          actualizarPrecio = true;
+        }
 
-          const variantToUpdate = variants[0];
+        if (actualizarPrecio) {
           bundleUpdatePromises.push(() =>
-            actualizarVarianteProducto(variantToUpdate.id, precioTotal)
+            updateProductVariants(bundleId, variantsTemp)
           );
         }
       } else {
         if (options.length === 1) {
-          // Mapea los precios de la primera variante de cada producto
+          console.log("_".repeat(50));
+          console.log("El bundle ", bundleProduct.title, "tiene una opción.");
           const preciosPrimerasVariantes = productos.map(
             (producto) => producto.variants[0].price
           );
 
-          for (const variant of variants) {
+          for (let j = 0; j < variants.length; j++) {
+            const variant = variants[j];
             const { option1 } = variant;
             const precioVariant = variant.price;
 
-            // Encuentra el producto que determina la variante
             const productoDeterminaVariante = productos.find((p) =>
               p.variants.some((v) => v.option1 === option1)
             );
@@ -430,13 +444,15 @@ async function actualizarBundlesDeProducto(productData) {
             const variantsProductoDeterminaVariante =
               productoDeterminaVariante.variants;
 
-            // Encuentra el precio de la variante que coincide con la opción
             const precioDeterminaVariante =
               variantsProductoDeterminaVariante.find(
                 (v) => v.option1 === option1
               ).price;
 
-            // Calcula el precio total
+            const varianteDeterminaPrecio = variantsTemp.find(
+              (v) => v.option1 === option1
+            );
+
             let precioTotal = 0;
 
             for (let i = 0; i < productos.length; i++) {
@@ -451,94 +467,115 @@ async function actualizarBundlesDeProducto(productData) {
               }
             }
 
-            if (precioVariant != precioTotal) {
+            const precioTotalString = precioTotal.toFixed(2);
+
+            if (precioVariant != precioTotalString) {
               console.log(
-                "Actualizando precio de bundle con opción",
+                "Actualizando precio de",
+                bundleProduct.title,
+                "para la opción",
                 option1,
                 ":",
                 precioVariant,
                 "-->",
                 precioTotal
               );
-
-              bundleUpdatePromises.push(() =>
-                actualizarVarianteProducto(variant.id, precioTotal)
-              );
+              actualizarPrecio = true;
+              variantsTemp[j].price = precioTotalString;
             }
           }
-        } else if (options.length === 2) {
-          console.log("El bundle ", bundleProduct.title, "tiene dos opciones");
 
-          const preciosPrimerasVariantes = productos.map(
-            (producto) => producto.variants[0].price
-          );
-
-          for (const variant of variants) {
-            const { option1, option2 } = variant;
-
-            const productoDeterminaVariante = productos.find((p) =>
-              p.variants.some(
-                (v) => v.option1 === option1 && v.option2 === option2
-              )
+          if (actualizarPrecio) {
+            bundleUpdatePromises.push(() =>
+              updateProductVariants(bundleId, variantsTemp)
+            );
+          }
+          console.log("_".repeat(50));
+        } else {
+          if (options.length === 2) {
+            console.log("_".repeat(50));
+            console.log(
+              "El bundle ",
+              bundleProduct.title,
+              "tiene dos opciones."
+            );
+            const preciosPrimerasVariantes = productos.map(
+              (producto) => producto.variants[0].price
             );
 
-            if (productoDeterminaVariante) {
-              const variantsProductoDeterminaVariante =
-                productoDeterminaVariante.variants;
+            for (let j = 0; j < variants.length; j++) {
+              const variant = variants[j];
+              const { option1, option2 } = variant;
 
-              const precioDeterminaVariante =
-                variantsProductoDeterminaVariante.find(
+              const precioVariant = variant.price;
+
+              const productoDeterminaVariante = productos.find((p) =>
+                p.variants.some(
                   (v) => v.option1 === option1 && v.option2 === option2
-                ).price;
+                )
+              );
 
-              let precioTotal = 0;
+              if (productoDeterminaVariante) {
+                const variantsProductoDeterminaVariante =
+                  productoDeterminaVariante.variants;
 
-              for (let i = 0; i < productos.length; i++) {
-                const producto = productos[i];
-                const cantidad = cantidades[i];
-                const precioPrimerVariante = preciosPrimerasVariantes[i];
+                const precioDeterminaVariante =
+                  variantsProductoDeterminaVariante.find(
+                    (v) => v.option1 === option1 && v.option2 === option2
+                  ).price;
 
-                if (producto.id === productoDeterminaVariante.id) {
-                  precioTotal += cantidad * precioDeterminaVariante;
-                } else {
-                  precioTotal += cantidad * precioPrimerVariante;
+                let precioTotal = 0;
+
+                for (let i = 0; i < productos.length; i++) {
+                  const producto = productos[i];
+                  const cantidad = cantidades[i];
+                  const precioPrimerVariante = preciosPrimerasVariantes[i];
+
+                  if (producto.id === productoDeterminaVariante.id) {
+                    precioTotal += cantidad * precioDeterminaVariante;
+                  } else {
+                    precioTotal += cantidad * precioPrimerVariante;
+                  }
                 }
-              }
 
-              if (variant.price != precioTotal) {
-                console.log(
-                  "Actualizando precio de bundle ",
-                  bundleProduct.title,
-                  "con opciones",
-                  option1,
-                  option2,
-                  ":",
-                  variant.price,
-                  "-->",
-                  precioTotal
+                const precioTotalString = precioTotal.toFixed(2);
+
+                if (precioVariant != precioTotalString) {
+                  console.log(
+                    "Actualizando precio de",
+                    bundleProduct.title,
+                    "para la opción",
+                    option1,
+                    option2,
+                    ":",
+                    precioVariant,
+                    "-->",
+                    precioTotal
+                  );
+                  actualizarPrecio = true;
+                  variantsTemp[j].price = precioTotalString;
+                }
+              } else {
+                const producto1 = productos.find((p) =>
+                  p.variants.some((v) => v.option1 === option1)
                 );
-                bundleUpdatePromises.push(() =>
-                  actualizarVarianteProducto(variant.id, precioTotal)
+
+                const producto2 = productos.find((p) =>
+                  p.variants.some((v) => v.option1 === option2)
                 );
-              }
-            } else {
-              const producto1 = productos.find((p) =>
-                p.variants.some((v) => v.option1 === option1)
-              );
 
-              const producto2 = productos.find((p) =>
-                p.variants.some((v) => v.option1 === option2)
-              );
+                if (!producto1 || !producto2) {
+                  break;
+                }
 
-              if (producto1 && producto2) {
                 const variantsProducto1 = producto1.variants;
                 const variantsProducto2 = producto2.variants;
 
-                const precioDeterminaVariante1 = variantsProducto1.find(
+                const precioProducto1 = variantsProducto1.find(
                   (v) => v.option1 === option1
                 ).price;
 
-                const precioDeterminaVariante2 = variantsProducto2.find(
+                const precioProducto2 = variantsProducto2.find(
                   (v) => v.option1 === option2
                 ).price;
 
@@ -550,185 +587,79 @@ async function actualizarBundlesDeProducto(productData) {
                   const precioPrimerVariante = preciosPrimerasVariantes[i];
 
                   if (producto.id === producto1.id) {
-                    precioTotal += cantidad * precioDeterminaVariante1;
+                    precioTotal += cantidad * precioProducto1;
                   } else if (producto.id === producto2.id) {
-                    precioTotal += cantidad * precioDeterminaVariante2;
+                    precioTotal += cantidad * precioProducto2;
                   } else {
                     precioTotal += cantidad * precioPrimerVariante;
                   }
                 }
 
-                if (variant.price != precioTotal) {
+                const precioTotalString = precioTotal.toFixed(2);
+
+                if (precioVariant != precioTotalString) {
                   console.log(
-                    "Actualizando precio de bundle ",
+                    "Actualizando precio de",
                     bundleProduct.title,
-                    "con opciones",
+                    "para la opción",
                     option1,
                     option2,
                     ":",
-                    variant.price,
+                    precioVariant,
                     "-->",
                     precioTotal
                   );
-
-                  bundleUpdatePromises.push(() =>
-                    actualizarVarianteProducto(variant.id, precioTotal)
-                  );
+                  actualizarPrecio = true;
+                  variantsTemp[j].price = precioTotalString;
                 }
-              } else {
-                console.log(
-                  "No se encontró el producto que determina la variante"
-                );
-                break;
               }
             }
-          }
-        } else if (options.length === 3) {
-          console.log("El bundle ", bundleProduct.title, "tiene tres opciones");
 
-          const preciosPrimerasVariantes = productos.map(
-            (producto) => producto.variants[0].price
-          );
+            if (actualizarPrecio) {
+              console.log("Actualizando bundle...");
+              bundleUpdatePromises.push(() =>
+                updateProductVariants(bundleId, variantsTemp)
+              );
+            }
 
-          for (const variant of variants) {
-            const { option1, option2, option3 } = variant;
-
-            const productoDetermina3Variante = productos.find((p) =>
-              p.variants.some(
-                (v) =>
-                  v.option1 === option1 &&
-                  v.option2 === option2 &&
-                  v.option3 === option3
-              )
-            );
-
-            if (productoDetermina3Variante) {
-              const variantsProductoDetermina3Variante =
-                productoDetermina3Variante.variants;
-
-              const precioDetermina3Variante =
-                variantsProductoDetermina3Variante.find(
-                  (v) =>
-                    v.option1 === option1 &&
-                    v.option2 === option2 &&
-                    v.option3 === option3
-                ).price;
-
-              let precioTotal = 0;
-
-              for (let i = 0; i < productos.length; i++) {
-                const producto = productos[i];
-                const cantidad = cantidades[i];
-                const precioPrimerVariante = preciosPrimerasVariantes[i];
-
-                if (producto.id === productoDetermina3Variante.id) {
-                  precioTotal += cantidad * precioDetermina3Variante;
-                } else {
-                  precioTotal += cantidad * precioPrimerVariante;
-                }
-              }
-
-              if (variant.price != precioTotal) {
-                console.log(
-                  "Actualizando precio de bundle con opciones",
-                  option1,
-                  option2,
-                  option3,
-                  ":",
-                  variant.price,
-                  "-->",
-                  precioTotal
-                );
-                bundleUpdatePromises.push(() =>
-                  actualizarVarianteProducto(variant.id, precioTotal)
-                );
-              }
-            } else {
-              const productoDetermina2Variante = productos.find((p) =>
-                p.variants.some(
-                  (v) => v.option1 === option1 && v.option2 === option2
-                )
+            console.log("_".repeat(50));
+          } else {
+            if (options.length === 3) {
+              console.log("_".repeat(50));
+              console.log(
+                "El bundle ",
+                bundleProduct.title,
+                "tiene tres opciones."
+              );
+              const preciosPrimerasVariantes = productos.map(
+                (producto) => producto.variants[0].price
               );
 
-              const productoDetermina1Variante = productos.find((p) =>
-                p.variants.some((v) => v.option1 === option3)
-              );
+              for (let j = 0; j < variants.length; j++) {
+                const variant = variants[j];
 
-              if (productoDetermina2Variante && productoDetermina1Variante) {
-                const variantsProductoDetermina2Variante =
-                  productoDetermina2Variante.variants;
-                const variantsProductoDetermina1Variante =
-                  productoDetermina1Variante.variants;
+                const { option1, option2, option3 } = variant;
+                console.log("Opciones:", option1, option2, option3);
 
-                const precioDetermina2Variante =
-                  variantsProductoDetermina2Variante.find(
-                    (v) => v.option1 === option1 && v.option2 === option2
-                  ).price;
-
-                const precioDetermina1Variante =
-                  variantsProductoDetermina1Variante.find(
-                    (v) => v.option1 === option3
-                  ).price;
-
-                let precioTotal = 0;
-
-                for (let i = 0; i < productos.length; i++) {
-                  const producto = productos[i];
-                  const cantidad = cantidades[i];
-                  const precioPrimerVariante = preciosPrimerasVariantes[i];
-
-                  if (producto.id === productoDetermina2Variante.id) {
-                    precioTotal += cantidad * precioDetermina2Variante;
-                  } else if (producto.id === productoDetermina1Variante.id) {
-                    precioTotal += cantidad * precioDetermina1Variante;
-                  } else {
-                    precioTotal += cantidad * precioPrimerVariante;
-                  }
-                }
-
-                if (variant.price != precioTotal) {
-                  console.log(
-                    "Actualizando precio de bundle con opciones",
-                    option1,
-                    option2,
-                    option3,
-                    ":",
-                    variant.price,
-                    "-->",
-                    precioTotal
-                  );
-                  bundleUpdatePromises.push(() =>
-                    actualizarVarianteProducto(variant.id, precioTotal)
-                  );
-                }
-              } else {
-                const productoDetermina1VarianteAlt = productos.find((p) =>
+                const productoDetermina3Variante = productos.find((p) =>
                   p.variants.some(
-                    (v) => v.option1 === option1 && v.option2 === option3
+                    (v) =>
+                      v.option1 === option1 &&
+                      v.option2 === option2 &&
+                      v.option3 === option3
                   )
                 );
 
-                const productoDetermina2VarianteAlt = productos.find((p) =>
-                  p.variants.some((v) => v.option1 === option2)
-                );
+                if (productoDetermina3Variante) {
+                  const variantsProductoDetermina3Variante =
+                    productoDetermina3Variante.variants;
 
-                if (
-                  productoDetermina1VarianteAlt &&
-                  productoDetermina2VarianteAlt
-                ) {
-                  const variantsProductoDetermina1VarianteAlt =
-                    productoDetermina1VarianteAlt.variants;
-                  const variantsProductoDetermina2VarianteAlt =
-                    productoDetermina2VarianteAlt.variants;
-
-                  const precioDetermina1VarianteAlt =
-                    variantsProductoDetermina1VarianteAlt.find(
-                      (v) => v.option1 === option1 && v.option2 === option3
-                    ).price;
-
-                  const precioDetermina2VarianteAlt =
-                    variantsProductoDetermina2VarianteAlt.find(
-                      (v) => v.option1 === option2
+                  const precioDetermina3Variante =
+                    variantsProductoDetermina3Variante.find(
+                      (v) =>
+                        v.option1 === option1 &&
+                        v.option2 === option2 &&
+                        v.option3 === option3
                     ).price;
 
                   let precioTotal = 0;
@@ -738,20 +669,20 @@ async function actualizarBundlesDeProducto(productData) {
                     const cantidad = cantidades[i];
                     const precioPrimerVariante = preciosPrimerasVariantes[i];
 
-                    if (producto.id === productoDetermina1VarianteAlt.id) {
-                      precioTotal += cantidad * precioDetermina1VarianteAlt;
-                    } else if (
-                      producto.id === productoDetermina2VarianteAlt.id
-                    ) {
-                      precioTotal += cantidad * precioDetermina2VarianteAlt;
+                    if (producto.id === productoDetermina3Variante.id) {
+                      precioTotal += cantidad * precioDetermina3Variante;
                     } else {
                       precioTotal += cantidad * precioPrimerVariante;
                     }
                   }
 
-                  if (variant.price != precioTotal) {
+                  const precioTotalString = precioTotal.toFixed(2);
+
+                  if (variant.price != precioTotalString) {
                     console.log(
-                      "Actualizando precio de bundle con opciones",
+                      "Actualizando precio de",
+                      bundleProduct.title,
+                      "para la opción",
                       option1,
                       option2,
                       option3,
@@ -760,38 +691,37 @@ async function actualizarBundlesDeProducto(productData) {
                       "-->",
                       precioTotal
                     );
-                    bundleUpdatePromises.push(() =>
-                      actualizarVarianteProducto(variant.id, precioTotal)
-                    );
+                    actualizarPrecio = true;
+                    variantsTemp[j].price = precioTotalString;
                   }
                 } else {
-                  const productoDetermina1VarianteAlt2 = productos.find((p) =>
+                  const productoDetermina2Variante = productos.find((p) =>
                     p.variants.some(
-                      (v) => v.option1 === option2 && v.option2 === option3
+                      (v) => v.option1 === option1 && v.option2 === option2
                     )
                   );
 
-                  const productoDetermina2VarianteAlt2 = productos.find((p) =>
-                    p.variants.some((v) => v.option1 === option1)
+                  const productoDetermina1Variante = productos.find((p) =>
+                    p.variants.some((v) => v.option1 === option3)
                   );
 
                   if (
-                    productoDetermina1VarianteAlt2 &&
-                    productoDetermina2VarianteAlt2
+                    productoDetermina2Variante &&
+                    productoDetermina1Variante
                   ) {
-                    const variantsProductoDetermina1VarianteAlt2 =
-                      productoDetermina1VarianteAlt2.variants;
-                    const variantsProductoDetermina2VarianteAlt2 =
-                      productoDetermina2VarianteAlt2.variants;
+                    const variantsProductoDetermina2Variante =
+                      productoDetermina2Variante.variants;
+                    const variantsProductoDetermina1Variante =
+                      productoDetermina1Variante.variants;
 
-                    const precioDetermina1VarianteAlt2 =
-                      variantsProductoDetermina1VarianteAlt2.find(
-                        (v) => v.option1 === option2 && v.option2 === option3
+                    const precioDetermina2Variante =
+                      variantsProductoDetermina2Variante.find(
+                        (v) => v.option1 === option1 && v.option2 === option2
                       ).price;
 
-                    const precioDetermina2VarianteAlt2 =
-                      variantsProductoDetermina2VarianteAlt2.find(
-                        (v) => v.option1 === option1
+                    const precioDetermina1Variante =
+                      variantsProductoDetermina1Variante.find(
+                        (v) => v.option1 === option3
                       ).price;
 
                     let precioTotal = 0;
@@ -801,20 +731,24 @@ async function actualizarBundlesDeProducto(productData) {
                       const cantidad = cantidades[i];
                       const precioPrimerVariante = preciosPrimerasVariantes[i];
 
-                      if (producto.id === productoDetermina1VarianteAlt2.id) {
-                        precioTotal += cantidad * precioDetermina1VarianteAlt2;
+                      if (producto.id === productoDetermina2Variante.id) {
+                        precioTotal += cantidad * precioDetermina2Variante;
                       } else if (
-                        producto.id === productoDetermina2VarianteAlt2.id
+                        producto.id === productoDetermina1Variante.id
                       ) {
-                        precioTotal += cantidad * precioDetermina2VarianteAlt2;
+                        precioTotal += cantidad * precioDetermina1Variante;
                       } else {
                         precioTotal += cantidad * precioPrimerVariante;
                       }
                     }
 
-                    if (variant.price != precioTotal) {
+                    const precioTotalString = precioTotal.toFixed(2);
+
+                    if (variant.price != precioTotalString) {
                       console.log(
-                        "Actualizando precio de bundle con opciones",
+                        "Actualizando precio de",
+                        bundleProduct.title,
+                        "para la opción",
                         option1,
                         option2,
                         option3,
@@ -823,25 +757,39 @@ async function actualizarBundlesDeProducto(productData) {
                         "-->",
                         precioTotal
                       );
-                      bundleUpdatePromises.push(() =>
-                        actualizarVarianteProducto(variant.id, precioTotal)
-                      );
+                      actualizarPrecio = true;
+                      variantsTemp[j].price = precioTotalString;
                     }
                   } else {
-                    const p1 = productos.find((p) =>
-                      p.variants.some((v) => v.option1 === option1)
-                    );
-                    const p2 = productos.find((p) =>
-                      p.variants.some((v) => v.option1 === option2)
-                    );
-                    const p3 = productos.find((p) =>
-                      p.variants.some((v) => v.option1 === option3)
+                    const productoDetermina1VarianteAlt = productos.find((p) =>
+                      p.variants.some(
+                        (v) => v.option1 === option1 && v.option2 === option3
+                      )
                     );
 
-                    if (p1 && p2 && p3) {
-                      const v1 = p1.variants.find((v) => v.option1 === option1);
-                      const v2 = p2.variants.find((v) => v.option1 === option2);
-                      const v3 = p3.variants.find((v) => v.option1 === option3);
+                    const productoDetermina2VarianteAlt = productos.find((p) =>
+                      p.variants.some((v) => v.option1 === option2)
+                    );
+
+                    if (
+                      productoDetermina1VarianteAlt &&
+                      productoDetermina2VarianteAlt
+                    ) {
+                      const variantsProductoDetermina1VarianteAlt =
+                        productoDetermina1VarianteAlt.variants;
+
+                      const variantsProductoDetermina2VarianteAlt =
+                        productoDetermina2VarianteAlt.variants;
+
+                      const precioDetermina1VarianteAlt =
+                        variantsProductoDetermina1VarianteAlt.find(
+                          (v) => v.option1 === option1 && v.option2 === option3
+                        ).price;
+
+                      const precioDetermina2VarianteAlt =
+                        variantsProductoDetermina2VarianteAlt.find(
+                          (v) => v.option1 === option2
+                        ).price;
 
                       let precioTotal = 0;
 
@@ -851,20 +799,24 @@ async function actualizarBundlesDeProducto(productData) {
                         const precioPrimerVariante =
                           preciosPrimerasVariantes[i];
 
-                        if (producto.id === p1.id) {
-                          precioTotal += cantidad * v1.price;
-                        } else if (producto.id === p2.id) {
-                          precioTotal += cantidad * v2.price;
-                        } else if (producto.id === p3.id) {
-                          precioTotal += cantidad * v3.price;
+                        if (producto.id === productoDetermina1VarianteAlt.id) {
+                          precioTotal += cantidad * precioDetermina1VarianteAlt;
+                        } else if (
+                          producto.id === productoDetermina2VarianteAlt.id
+                        ) {
+                          precioTotal += cantidad * precioDetermina2VarianteAlt;
                         } else {
                           precioTotal += cantidad * precioPrimerVariante;
                         }
                       }
 
-                      if (variant.price != precioTotal) {
+                      const precioTotalString = precioTotal.toFixed(2);
+
+                      if (variant.price != precioTotalString) {
                         console.log(
-                          "Actualizando precio de bundle con opciones",
+                          "Actualizando precio de",
+                          bundleProduct.title,
+                          "para la opción",
                           option1,
                           option2,
                           option3,
@@ -873,19 +825,164 @@ async function actualizarBundlesDeProducto(productData) {
                           "-->",
                           precioTotal
                         );
-                        bundleUpdatePromises.push(() =>
-                          actualizarVarianteProducto(variant.id, precioTotal)
-                        );
+                        actualizarPrecio = true;
+                        variantsTemp[j].price = precioTotalString;
                       }
                     } else {
-                      console.log(
-                        "No se encontró el producto que determina la variante"
+                      const productoDetermina1VarianteAlt2 = productos.find(
+                        (p) =>
+                          p.variants.some(
+                            (v) =>
+                              v.option1 === option2 && v.option2 === option3
+                          )
                       );
-                      break;
+
+                      const productoDetermina2VarianteAlt2 = productos.find(
+                        (p) => p.variants.some((v) => v.option1 === option1)
+                      );
+
+                      if (
+                        productoDetermina1VarianteAlt2 &&
+                        productoDetermina2VarianteAlt2
+                      ) {
+                        const variantsProductoDetermina1VarianteAlt2 =
+                          productoDetermina1VarianteAlt2.variants;
+                        const variantsProductoDetermina2VarianteAlt2 =
+                          productoDetermina2VarianteAlt2.variants;
+
+                        const precioDetermina1VarianteAlt2 =
+                          variantsProductoDetermina1VarianteAlt2.find(
+                            (v) =>
+                              v.option1 === option2 && v.option2 === option3
+                          ).price;
+
+                        const precioDetermina2VarianteAlt2 =
+                          variantsProductoDetermina2VarianteAlt2.find(
+                            (v) => v.option1 === option1
+                          ).price;
+
+                        let precioTotal = 0;
+
+                        for (let i = 0; i < productos.length; i++) {
+                          const producto = productos[i];
+                          const cantidad = cantidades[i];
+                          const precioPrimerVariante =
+                            preciosPrimerasVariantes[i];
+
+                          if (
+                            producto.id === productoDetermina1VarianteAlt2.id
+                          ) {
+                            precioTotal +=
+                              cantidad * precioDetermina1VarianteAlt2;
+                          } else if (
+                            producto.id === productoDetermina2VarianteAlt2.id
+                          ) {
+                            precioTotal +=
+                              cantidad * precioDetermina2VarianteAlt2;
+                          } else {
+                            precioTotal += cantidad * precioPrimerVariante;
+                          }
+                        }
+
+                        const precioTotalString = precioTotal.toFixed(2);
+
+                        if (variant.price != precioTotalString) {
+                          console.log(
+                            "Actualizando precio de",
+                            bundleProduct.title,
+                            "para la opción",
+                            option1,
+                            option2,
+                            option3,
+                            ":",
+                            variant.price,
+                            "-->",
+                            precioTotal
+                          );
+                          actualizarPrecio = true;
+                          variantsTemp[j].price = precioTotalString;
+                        }
+                      } else {
+                        const p1 = productos.find((p) =>
+                          p.variants.some((v) => v.option1 === option1)
+                        );
+                        const p2 = productos.find((p) =>
+                          p.variants.some((v) => v.option1 === option2)
+                        );
+                        const p3 = productos.find((p) =>
+                          p.variants.some((v) => v.option1 === option3)
+                        );
+
+                        if (p1 && p2 && p3) {
+                          const v1 = p1.variants.find(
+                            (v) => v.option1 === option1
+                          ).price;
+
+                          const v2 = p2.variants.find(
+                            (v) => v.option1 === option2
+                          ).price;
+
+                          const v3 = p3.variants.find(
+                            (v) => v.option1 === option3
+                          ).price;
+
+                          let precioTotal = 0;
+
+                          for (let i = 0; i < productos.length; i++) {
+                            const producto = productos[i];
+                            const cantidad = cantidades[i];
+                            const precioPrimerVariante =
+                              preciosPrimerasVariantes[i];
+
+                            if (producto.id === p1.id) {
+                              precioTotal += cantidad * v1;
+                            } else if (producto.id === p2.id) {
+                              precioTotal += cantidad * v2;
+                            } else if (producto.id === p3.id) {
+                              precioTotal += cantidad * v3;
+                            } else {
+                              precioTotal += cantidad * precioPrimerVariante;
+                            }
+                          }
+
+                          const precioTotalString = precioTotal.toFixed(2);
+
+                          if (variant.price != precioTotalString) {
+                            console.log(
+                              "Actualizando precio de",
+                              bundleProduct.title,
+                              "para la opción",
+                              option1,
+                              option2,
+                              option3,
+                              ":",
+                              variant.price,
+                              "-->",
+                              precioTotal
+                            );
+                            actualizarPrecio = true;
+                            variantsTemp[j].price = precioTotalString;
+                          }
+                        } else {
+                          console.log(
+                            "No se encontraron productos que determinen la variante."
+                          );
+
+                          break;
+                        }
+                      }
                     }
                   }
                 }
               }
+
+              if (actualizarPrecio) {
+                console.log("Actualizando bundle...");
+                bundleUpdatePromises.push(() =>
+                  updateProductVariants(bundleId, variantsTemp)
+                );
+              }
+              console.log("_".repeat(50));
             }
           }
         }
@@ -893,7 +990,7 @@ async function actualizarBundlesDeProducto(productData) {
     }
 
     console.log(
-      "Cantidad de variantes a actualizar:",
+      "Cantidad de bundles a actualizar:",
       bundleUpdatePromises.length
     );
     await actualizarBundles(bundleUpdatePromises);
