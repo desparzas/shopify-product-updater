@@ -6,10 +6,9 @@ async function saveProduct(productData) {
     const { productId } = productData;
     const id = parseInt(productId);
 
-    const { title, productos, cantidades } = productData;
+    const { productos, cantidades } = productData;
     const product = new Product({
       productId: id,
-      title,
       productos,
       cantidades,
     });

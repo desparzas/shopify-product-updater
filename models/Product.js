@@ -10,7 +10,7 @@ const productSchema = new Schema(
     },
     title: {
       type: String,
-      required: true,
+      required: false,
     },
     productos: {
       type: [Number], // IDs de productos relacionados

@@ -844,7 +844,6 @@ async function processProduct(id) {
     }
     return {
       id: pReturn.productId,
-      title: pReturn.title,
       productos: pReturn.productos,
       cantidades: pReturn.cantidades,
     };
