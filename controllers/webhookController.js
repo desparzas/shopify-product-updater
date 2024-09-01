@@ -64,7 +64,7 @@ async function handleProductUpdate(req, res) {
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 120000);
 
-    await shopifyService.actualizarBundlesDeProducto(productData);
+    await shopifyService.handleProductUp(productData);
 
     console.log("Webhook procesado para el producto ", productData.title);
     return res.status(200).send("Webhook recibido");

@@ -2,12 +2,15 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const morgan = require("morgan");
-const productRoutes = require("./routes/productRoutes");
 const webhookRoutes = require("./routes/webhookRoutes");
+const connectDB = require("./config/db");
 
 // create express app
 const app = express();
 
+// Conectar a la base de datos
+
+connectDB();
 // Middleware para recibir el cuerpo raw de los webhooks
 app.use(morgan("dev"));
 app.use(cors());
@@ -23,7 +26,6 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use("/api", productRoutes);
 app.use("/webhooks", webhookRoutes);
 
 module.exports = app;
