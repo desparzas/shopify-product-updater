@@ -935,11 +935,15 @@ async function handleProductUp(product) {
       console.log("El bundle no es válido");
     }
 
-    await processPromisesBatch(updatePromises);
+    if (updatePromises.length === 0) {
+      console.log("No hay cambios que hacer");
+    } else {
+      await processPromisesBatch(updatePromises);
+    }
 
     const updatePromises2 = [];
 
-    const bundles = getBundlesDBWithProduct(bundleId);
+    const bundles = await getBundlesDBWithProduct(bundleId);
     console.log("Bundles con el producto:", bundles.length);
 
     if (bundles.length === 0) {
