@@ -113,8 +113,8 @@ async function getBundleFields(productId) {
         )
       : Array(listaProductos.length).fill(1);
 
-    console.log("Lista de productos:", listaProductos.length);
-    console.log("Lista de cantidades:", listaCantidad.length);
+    // console.log("Lista de productos:", listaProductos.length);
+    // console.log("Lista de cantidades:", listaCantidad.length);
 
     if (listaCantidad.length !== listaProductos.length) {
       listaCantidad = Array(listaProductos.length).fill(1);
@@ -177,8 +177,6 @@ async function updateBundle(productId) {
     }
 
     const { productos, cantidades } = bundleFields;
-    console.log("Productos:", productos);
-    console.log("Cantidades:", cantidades);
 
     if (productos.length === 0) {
       console.log("El bundle no tiene productos");
@@ -199,8 +197,6 @@ async function updateBundle(productId) {
 
     let optionsOut = [];
 
-    // primero validar si todos sus productos son simples
-
     let allSimple = true;
 
     for (const product of productosBundle) {
@@ -211,7 +207,6 @@ async function updateBundle(productId) {
     }
 
     if (allSimple) {
-      // calcular el precio total
       let precioTotal = 0;
       for (let i = 0; i < productosBundle.length; i++) {
         const producto = productosBundle[i];
@@ -232,6 +227,8 @@ async function updateBundle(productId) {
         title: "Default Title",
       };
 
+      console.log("El bundle es simple y su precio es", precioTotal);
+
       return {
         validBundle: true,
         error: "",
@@ -251,10 +248,6 @@ async function updateBundle(productId) {
       const opcionesProducto = options.length * cantidad;
 
       if (!isSimpleProduct(product)) {
-        console.log("-".repeat(50));
-        console.log("-".repeat(50));
-        console.log(" ");
-
         console.log("Producto con variantes:", title);
         console.log("Cantidad:", cantidad);
 
@@ -264,15 +257,10 @@ async function updateBundle(productId) {
         } else {
           variantsCount *= variantesProducto;
         }
-
         console.log("Opciones del producto:", options.length);
-
-        console.log("Obteniendo opciones del producto...");
 
         for (let i = 0; i < cantidad; i++) {
           for (let j = 0; j < options.length; j++) {
-            console.log("-".repeat(25));
-
             const titleOut = `${title} (${options[j].name})`;
             console.log("Opción", j + 1, ":", options[j].name);
             console.log("Título de la variante:", titleOut);
@@ -285,15 +273,8 @@ async function updateBundle(productId) {
             };
 
             optionsOut.push(optionOut);
-
-            console.log("-".repeat(25));
           }
         }
-        console.log(" ");
-        console.log("-".repeat(50));
-        console.log("-".repeat(50));
-        console.log(" ");
-        console.log(" ");
       }
       if (optionsCount > 3) {
         console.log("El bundle tiene más de 3 opciones");
@@ -329,18 +310,10 @@ async function updateBundle(productId) {
 
       // calcular el precio
       const variants = values.map((value) => {
-        console.log("-".repeat(50));
-        console.log("Calculando variante para:", value);
-        console.log("-".repeat(50));
-
         let priceTotal = 0;
-
         for (let i = 0; i < productosBundle.length; i++) {
-          console.log(" ");
-          console.log("-".repeat(50));
           const product = productosBundle[i];
           const cantidad = cantidades[i];
-          console.log("Producto:", product.title);
           let precio = 0;
           if (isSimpleProduct(product)) {
             console.log(
@@ -361,15 +334,8 @@ async function updateBundle(productId) {
           }
 
           console.log("Subtotal:", precio);
-          console.log(" ");
-          console.log("Total acumulado:", priceTotal);
-          console.log("-".repeat(50));
         }
-
         console.log("Precio de la variante:", priceTotal);
-        console.log("-".repeat(50));
-        console.log(" ");
-
         return {
           option1: value,
           option2: null,
@@ -393,15 +359,6 @@ async function updateBundle(productId) {
         name: name2,
       } = optionsOut[1];
 
-      console.log("Opciones 1:", values1);
-      console.log("Opciones 2:", values2);
-
-      console.log("Productos:", idProduct1, idProduct2);
-      console.log("Títulos:", title1, title2);
-
-      console.log("Nombre 1:", name1);
-      console.log("Nombre 2:", name2);
-
       const variants = [];
 
       let sumaSimples = 0;
@@ -414,15 +371,8 @@ async function updateBundle(productId) {
         }
       }
 
-      console.log("Suma de simples:", sumaSimples);
-
       for (const value1 of values1) {
         for (const value2 of values2) {
-          console.log("-".repeat(50));
-
-          console.log("Opción 1:", value1);
-          console.log("Opción 2:", value2);
-
           let priceTotal = 0;
 
           const productoDeterminaVariante = productosBundle.find(
@@ -435,22 +385,13 @@ async function updateBundle(productId) {
           );
 
           if (productoDeterminaVariante) {
-            console.log(
-              "Producto determina variante:",
-              productoDeterminaVariante.title
-            );
-
             let precioDeterminaVariante =
               productoDeterminaVariante.variants.find(
                 (v) => v.option1 === value1 && v.option2 === value2
               ).price;
-
-            console.log("Precio determina variante:", precioDeterminaVariante);
-
             priceTotal += parseFloat(precioDeterminaVariante);
           } else {
             let producto1, producto2;
-
             for (const p of productosBundle) {
               if (
                 !producto1 &&
@@ -469,13 +410,6 @@ async function updateBundle(productId) {
               if (producto1 && producto2) break;
             }
 
-            if (producto1) {
-              console.log("Producto 1:", producto1.title);
-            }
-            if (producto2) {
-              console.log("Producto 2:", producto2.title);
-            }
-
             const precioDeterminaVariante1 = producto1.variants.find(
               (v) => v.option1 === value1
             ).price;
@@ -483,9 +417,6 @@ async function updateBundle(productId) {
             const precioDeterminaVariante2 = producto2.variants.find(
               (v) => v.option1 === value2
             ).price;
-
-            console.log("Precio Variante 1:", precioDeterminaVariante1);
-            console.log("Precio Variante 2:", precioDeterminaVariante2);
 
             priceTotal +=
               parseFloat(precioDeterminaVariante1) +
@@ -499,8 +430,6 @@ async function updateBundle(productId) {
             option3: null,
             price: priceTotal,
           });
-
-          console.log("-".repeat(50));
         }
       }
       variantsOut = variants;
@@ -539,12 +468,7 @@ async function updateBundle(productId) {
       for (const value1 of values1) {
         for (const value2 of values2) {
           for (const value3 of values3) {
-            console.log("Opción 1:", value1);
-            console.log("Opción 2:", value2);
-            console.log("Opción 3:", value3);
-
             let priceTotal = 0;
-
             const productoDeterminaVariante = productosBundle.find((p) =>
               p.variants.some(
                 (v) =>
@@ -608,9 +532,6 @@ async function updateBundle(productId) {
               );
 
               if (producto1 && product2) {
-                console.log("Producto 1:", producto1.title);
-                console.log("Producto 2:", product2.title);
-
                 const precioDeterminaVariante1 = producto1.variants.find(
                   (v) =>
                     (v.option1 === value1 && v.option2 === value2) ||
@@ -671,21 +592,18 @@ async function updateBundle(productId) {
                 }
 
                 if (p1) {
-                  console.log("Producto 1:", p1.title);
                   precio1 = parseFloat(
                     p1.variants.find((v) => v.option1 === value1).price
                   );
                 }
 
                 if (p2) {
-                  console.log("Producto 2:", p2.title);
                   precio2 = parseFloat(
                     p2.variants.find((v) => v.option1 === value2).price
                   );
                 }
 
                 if (p3) {
-                  console.log("Producto 3:", p3.title);
                   precio3 = parseFloat(
                     p3.variants.find((v) => v.option1 === value3).price
                   );
@@ -750,8 +668,6 @@ async function isValidBundle(productId) {
     }
 
     const { productos, cantidades } = bundleFields;
-    console.log("Productos:", productos);
-    console.log("Cantidades:", cantidades);
 
     const productosPromises = productos.map((id) => {
       return () => getProductById(id);
@@ -768,7 +684,6 @@ async function isValidBundle(productId) {
 
       const variantesProducto = variants.length ** cantidad;
       const opcionesProducto = options.length * cantidad;
-      console.log("-".repeat(50));
 
       console.log("Producto: ", title);
       console.log("Cantidad: ", cantidad);
@@ -840,14 +755,14 @@ async function processPromisesBatch(promises, batchSize = 10) {
   return results;
 }
 
-async function handleProductUp(product) {
+async function handleProductUp(pId) {
   try {
-    const { id } = product;
+    const id = pId;
     const bundleId = id;
     console.log("Manejando actualización del producto:", id);
-    const p = await processProduct(product);
+    const p = await processProduct(pId);
 
-    console.log("Producto procesado:", p);
+    // console.log("Producto procesado:", p);
 
     const { validBundle, error, optionsOut, variantsOut } = await updateBundle(
       id
@@ -858,7 +773,6 @@ async function handleProductUp(product) {
     if (validBundle) {
       const bundle = await getProductById(bundleId);
       const { options, variants } = bundle;
-      console.log("El bundle es válido");
       let updateOptions = false;
       let updateVariants = false;
 
@@ -896,8 +810,6 @@ async function handleProductUp(product) {
         }
       }
 
-      // para los variants validar que su option1, option2, option3, y price sean iguales
-
       for (let i = 0; i < variants.length; i++) {
         const variant = variants[i];
         const variantOut = variantsOut[i];
@@ -932,11 +844,11 @@ async function handleProductUp(product) {
         console.log("No hay cambios en las opciones ni en las variantes");
       }
     } else {
-      console.log("El bundle no es válido");
+      console.log("No es un bundle válido:", error);
     }
 
     if (updatePromises.length === 0) {
-      console.log("No hay cambios que hacer");
+      console.log("No hay cambios que hacer en el producto");
     } else {
       await processPromisesBatch(updatePromises);
     }
@@ -946,7 +858,7 @@ async function handleProductUp(product) {
     const bundles = await getBundlesDBWithProduct(bundleId);
 
     if (bundles.length === 0) {
-      console.log("No hay bundles con el producto");
+      console.log("No hay bundles que contengan el producto");
     } else {
       console.log("Bundles con el producto:", bundles.length);
       for (const bundle of bundles) {
@@ -960,31 +872,24 @@ async function handleProductUp(product) {
     console.log("Error actualizando el bundle:", error);
   }
 }
-async function processProduct(product) {
+async function processProduct(id) {
   try {
-    const { id } = product;
-    console.log("Procesando producto:", id);
+    // console.log("Procesando producto:", id);
     const bundleFields = await getBundleFields(id);
 
-    console.log("Bundle Fields:", bundleFields);
     const productDb = await getProductDBById(id);
 
     const productData = {
-      productId: product.id,
-      title: product.title,
+      productId: id,
       ...bundleFields,
     };
 
-    //console.log("Producto en MONGO:", productDb);
-    //console.log("Producto en SHOPIFY:", productData);
     let pReturn = null;
 
     if (!productDb) {
-      console.log("El producto no existe en MONGO, añadiendo...");
       const productAdded = await productService.saveProduct(productData);
       pReturn = productAdded;
     } else {
-      console.log("El producto ya existe en MONGO, actualizando...");
       const productUpdated = await productService.updateProduct(
         id,
         productData
