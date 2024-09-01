@@ -955,7 +955,6 @@ async function handleProductUp(product) {
           variants: variantDefault,
         })
       );
-      console.log("Error:", error);
     }
 
     await processPromisesBatch(updatePromises);
@@ -963,6 +962,7 @@ async function handleProductUp(product) {
     const updatePromises2 = [];
 
     const bundles = getBundlesDBWithProduct(bundleId);
+    console.log("Bundles con el producto:", bundles.length);
 
     if (bundles.length === 0) {
       console.log("El bundle no tiene productos asociados");
