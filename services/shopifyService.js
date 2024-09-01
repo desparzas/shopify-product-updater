@@ -944,9 +944,11 @@ async function handleProductUp(product) {
     const updatePromises2 = [];
 
     const bundles = await getBundlesDBWithProduct(bundleId);
-    console.log("Bundles con el producto:", bundles.length);
 
     if (bundles.length === 0) {
+      console.log("No hay bundles con el producto");
+    } else {
+      console.log("Bundles con el producto:", bundles.length);
       for (const bundle of bundles) {
         const id = bundle.productId;
         updatePromises2.push(() => handleProductUp(id));
