@@ -113,9 +113,6 @@ async function getBundleFields(productId) {
         )
       : Array(listaProductos.length).fill(1);
 
-    // console.log("Lista de productos:", listaProductos.length);
-    // console.log("Lista de cantidades:", listaCantidad.length);
-
     if (listaCantidad.length !== listaProductos.length) {
       listaCantidad = Array(listaProductos.length).fill(1);
     }
@@ -158,7 +155,6 @@ async function updateBundle(productId) {
     const bundle = await getProductById(productId);
 
     if (!bundle) {
-      console.log("El bundle no existe en Shopify");
       return {
         validBundle: false,
         error: "El bundle no existe en Shopify",
@@ -168,7 +164,6 @@ async function updateBundle(productId) {
 
     const bundleFields = await getBundleFields(productId);
     if (!bundleFields) {
-      console.log("El producto no tiene campos de bundle");
       return {
         validBundle: false,
         error: "El producto no tiene campos de bundle",
@@ -179,7 +174,6 @@ async function updateBundle(productId) {
     const { productos, cantidades } = bundleFields;
 
     if (productos.length === 0) {
-      console.log("El bundle no tiene productos");
       return {
         validBundle: false,
         error: "El bundle no tiene productos",
@@ -227,8 +221,6 @@ async function updateBundle(productId) {
         title: "Default Title",
       };
 
-      console.log("El bundle es simple y su precio es", precioTotal);
-
       return {
         validBundle: true,
         error: "",
@@ -248,22 +240,16 @@ async function updateBundle(productId) {
       const opcionesProducto = options.length * cantidad;
 
       if (!isSimpleProduct(product)) {
-        console.log("Producto con variantes:", title);
-        console.log("Cantidad:", cantidad);
-
         optionsCount += opcionesProducto;
         if (variantsCount === 0) {
           variantsCount = variantesProducto;
         } else {
           variantsCount *= variantesProducto;
         }
-        console.log("Opciones del producto:", options.length);
 
         for (let i = 0; i < cantidad; i++) {
           for (let j = 0; j < options.length; j++) {
             const titleOut = `${title} (${options[j].name})`;
-            console.log("Opción", j + 1, ":", options[j].name);
-            console.log("Título de la variante:", titleOut);
 
             const optionOut = {
               name: titleOut,
@@ -277,7 +263,6 @@ async function updateBundle(productId) {
         }
       }
       if (optionsCount > 3) {
-        console.log("El bundle tiene más de 3 opciones");
         return {
           validBundle: false,
           error: "El bundle tiene más de 3 opciones",
@@ -286,7 +271,6 @@ async function updateBundle(productId) {
       }
 
       if (variantsCount > 100) {
-        console.log("El bundle tiene más de 100 variantes");
         return {
           validBundle: false,
           error: "El bundle tiene más de 100 variantes",
@@ -316,26 +300,14 @@ async function updateBundle(productId) {
           const cantidad = cantidades[i];
           let precio = 0;
           if (isSimpleProduct(product)) {
-            console.log(
-              "Precio Unitario - Cantidad :",
-              product.variants[0].price,
-              "-",
-              cantidad
-            );
             precio = parseFloat(product.variants[0].price) * cantidad;
-
-            console.log("Precio calculado:", precio);
             priceTotal += precio;
           } else {
             const variant = product.variants.find((v) => v.option1 === value);
-            console.log("Variante - PRECIO", variant.title, variant.price);
             precio = parseFloat(variant.price) * cantidad;
             priceTotal += precio;
           }
-
-          console.log("Subtotal:", precio);
         }
-        console.log("Precio de la variante:", priceTotal);
         return {
           option1: value,
           option2: null,
@@ -642,8 +614,6 @@ async function updateBundle(productId) {
       variantsOut,
     };
   } catch (error) {
-    console.log("Error validando el bundle:", error);
-
     return {
       validBundle: false,
       error: "Error validando el bundle",
@@ -657,13 +627,11 @@ async function isValidBundle(productId) {
     const bundle = await getProductById(productId);
 
     if (!bundle) {
-      console.log("El bundle no existe en Shopify");
       return false;
     }
 
     const bundleFields = await getBundleFields(productId);
     if (!bundleFields) {
-      console.log("El producto no tiene campos de bundle");
       return false;
     }
 
@@ -685,9 +653,6 @@ async function isValidBundle(productId) {
       const variantesProducto = variants.length ** cantidad;
       const opcionesProducto = options.length * cantidad;
 
-      console.log("Producto: ", title);
-      console.log("Cantidad: ", cantidad);
-
       if (!isSimpleProduct(product)) {
         optionsCount += opcionesProducto;
         if (variantsCount === 0) {
@@ -698,25 +663,17 @@ async function isValidBundle(productId) {
       }
 
       if (optionsCount > 3) {
-        console.log("El bundle tiene más de 3 opciones");
         return false;
       }
 
       if (variantsCount > 100) {
-        console.log("El bundle tiene más de 100 variantes");
         return false;
       }
     }
 
     return true;
   } catch (error) {
-    console.log("Error validando el bundle:", error);
-
-    return {
-      validBundle: false,
-      error: "Error validando el bundle",
-      optionsOut: [],
-    };
+    return false;
   }
 }
 
@@ -761,8 +718,6 @@ async function handleProductUp(pId) {
     const bundleId = id;
     console.log("Manejando actualización del producto:", id);
     const p = await processProduct(pId);
-
-    // console.log("Producto procesado:", p);
 
     const { validBundle, error, optionsOut, variantsOut } = await updateBundle(
       id
@@ -833,23 +788,18 @@ async function handleProductUp(pId) {
       }
 
       if (updateOptions || updateVariants) {
-        console.log("Hay cambios en las opciones o en las variantes");
         updatePromises.push(() =>
           shopify.product.update(bundleId, {
             options: optionsOut,
             variants: variantsOut,
           })
         );
-      } else {
-        console.log("No hay cambios en las opciones ni en las variantes");
       }
     } else {
       console.log("No es un bundle válido:", error);
     }
 
-    if (updatePromises.length === 0) {
-      console.log("No hay cambios que hacer en el producto");
-    } else {
+    if (updatePromises.length !== 0) {
       await processPromisesBatch(updatePromises);
     }
 
@@ -857,10 +807,7 @@ async function handleProductUp(pId) {
 
     const bundles = await getBundlesDBWithProduct(bundleId);
 
-    if (bundles.length === 0) {
-      console.log("No hay bundles que contengan el producto");
-    } else {
-      console.log("Bundles con el producto:", bundles.length);
+    if (bundles.length !== 0) {
       for (const bundle of bundles) {
         const id = bundle.productId;
         updatePromises2.push(() => handleProductUp(id));
@@ -874,7 +821,6 @@ async function handleProductUp(pId) {
 }
 async function processProduct(id) {
   try {
-    // console.log("Procesando producto:", id);
     const bundleFields = await getBundleFields(id);
 
     const productDb = await getProductDBById(id);
