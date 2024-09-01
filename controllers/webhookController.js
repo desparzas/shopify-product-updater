@@ -62,7 +62,7 @@ async function handleProductUpdate(req, res) {
     }
 
     processedProducts.add(productData.id);
-    setTimeout(() => processedProducts.delete(productData.id), 120000);
+    setTimeout(() => processedProducts.delete(productData.id), 60000);
 
     await shopifyService.handleProductUp(productData);
 

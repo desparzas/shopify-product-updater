@@ -52,7 +52,7 @@ async function getProductById(productId) {
     console.log("Producto encontrado en MONGODB");
     return product;
   } catch (error) {
-    console.error("Error al obtener el producto:", error);
+    // console.error("Error al obtener el producto:", error);
     return null;
   }
 }
