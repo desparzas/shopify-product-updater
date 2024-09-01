@@ -964,6 +964,11 @@ async function handleProductUp(product) {
 
     const bundles = getBundlesDBWithProduct(bundleId);
 
+    if (bundles.length === 0) {
+      console.log("El bundle no tiene productos asociados");
+      return;
+    }
+
     for (const bundle of bundles) {
       const id = bundle.productId;
       updatePromises2.push(() => handleProductUp(id));
