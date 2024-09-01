@@ -230,7 +230,6 @@ async function updateBundle(productId) {
       };
     }
 
-    console.log("Calculando opciones...");
     for (let i = 0; i < productosBundle.length; i++) {
       const product = productosBundle[i];
       const cantidad = cantidades[i];
@@ -286,7 +285,6 @@ async function updateBundle(productId) {
         position: index + 1,
       };
     });
-    console.log("Calculando variantes.......");
     // armar las variantes
     if (optionsOut.length === 1) {
       const { values, productOriginalId, productOriginalTitle, name } =
@@ -716,7 +714,6 @@ async function handleProductUp(pId) {
   try {
     const id = pId;
     const bundleId = id;
-    console.log("Manejando actualización del producto:", id);
     const p = await processProduct(pId);
 
     const { validBundle, error, optionsOut, variantsOut } = await updateBundle(
@@ -795,10 +792,7 @@ async function handleProductUp(pId) {
           })
         );
       }
-    } else {
-      console.log("No es un bundle válido:", error);
     }
-
     if (updatePromises.length !== 0) {
       await processPromisesBatch(updatePromises);
     }

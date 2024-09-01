@@ -48,8 +48,6 @@ async function processQueue() {
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
-    // ESCRIBIR LO RECIBIDO EN EL WEBHOOK
-    // console.log(JSON.stringify(productData, null, 2));
 
     console.log(
       "Procesando webhook para el producto",
@@ -58,16 +56,43 @@ async function handleProductUpdate(req, res) {
       productData.title
     );
     if (processedProducts.has(productData.id)) {
-      return res.status(200).send("Evento ya procesado recientemente.");
+      console.log(
+        "Producto",
+        productData.id,
+        "-",
+        productData.title,
+        "ya procesado recientemente."
+      );
+      return res
+        .status(200)
+        .send(
+          "Producto",
+          productData.id,
+          "-",
+          productData.title,
+          "ya procesado recientemente."
+        );
     }
 
     processedProducts.add(productData.id);
-    setTimeout(() => processedProducts.delete(productData.id), 60000);
+    setTimeout(() => processedProducts.delete(productData.id), 300000);
 
     await shopifyService.handleProductUp(productData.id);
 
-    console.log("Webhook procesado para el producto ", productData.title);
-    return res.status(200).send("Webhook recibido");
+    console.log(
+      "Webhook procesado para el producto",
+      productData.id,
+      "-",
+      productData.title
+    );
+    return res
+      .status(200)
+      .send(
+        "Webhook procesado para el producto",
+        productData.id,
+        "-",
+        productData.title
+      );
   } catch (error) {
     console.error("Error handling product update webhook:", error);
     res.status(500).send("Internal Server Error");
