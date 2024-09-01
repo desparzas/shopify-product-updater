@@ -932,29 +932,7 @@ async function handleProductUp(product) {
         console.log("No hay cambios en las opciones ni en las variantes");
       }
     } else {
-      const optionDefault = [
-        {
-          name: "Title",
-          values: ["Default Title"],
-        },
-      ];
-
-      const variantDefault = [
-        {
-          option1: "Default Title",
-          price: 0,
-          title: "Default Title",
-        },
-      ];
-
       console.log("El bundle no es válido");
-
-      updatePromises.push(() =>
-        shopify.product.update(bundleId, {
-          options: optionDefault,
-          variants: variantDefault,
-        })
-      );
     }
 
     await processPromisesBatch(updatePromises);
