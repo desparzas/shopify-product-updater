@@ -1,4 +1,5 @@
 # ignore the requests folder
+test/
 request/
 # Logs
 logs

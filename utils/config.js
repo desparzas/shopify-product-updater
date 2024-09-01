@@ -7,6 +7,7 @@ const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET;
 const SCOPES = process.env.SCOPES;
 const PORT = process.env.PORT;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+const MONGODB_URI = process.env.MONGODB_URI;
 module.exports = {
   ACCESS_TOKEN,
   SHOP,
@@ -15,4 +16,5 @@ module.exports = {
   SCOPES,
   PORT,
   WEBHOOK_SECRET,
+  MONGODB_URI,
 };
