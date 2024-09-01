@@ -965,16 +965,13 @@ async function handleProductUp(product) {
     console.log("Bundles con el producto:", bundles.length);
 
     if (bundles.length === 0) {
-      console.log("El bundle no tiene productos asociados");
-      return;
-    }
+      for (const bundle of bundles) {
+        const id = bundle.productId;
+        updatePromises2.push(() => handleProductUp(id));
+      }
 
-    for (const bundle of bundles) {
-      const id = bundle.productId;
-      updatePromises2.push(() => handleProductUp(id));
+      await processPromisesBatch(updatePromises2);
     }
-
-    await processPromisesBatch(updatePromises2);
   } catch (error) {
     console.log("Error actualizando el bundle:", error);
   }
