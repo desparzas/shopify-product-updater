@@ -110,6 +110,8 @@ async function handleOrderCreate(req, res) {
 
     console.log(JSON.stringify(orderData, null, 2));
 
+    await shopifyService.handleOrderCreate(orderData);
+
     return res.status(200).send("Webhook recibido");
   } catch (error) {
     console.error("Error handling order create webhook:", error);
