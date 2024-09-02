@@ -159,6 +159,7 @@ async function updateBundle(productId) {
         validBundle: false,
         error: "El bundle no existe en Shopify",
         optionsOut: [],
+        variantsOut: [],
       };
     }
 
@@ -168,6 +169,7 @@ async function updateBundle(productId) {
         validBundle: false,
         error: "El producto no tiene campos de bundle",
         optionsOut: [],
+        variantsOut: [],
       };
     }
 
@@ -178,6 +180,7 @@ async function updateBundle(productId) {
         validBundle: false,
         error: "El bundle no tiene productos",
         optionsOut: [],
+        variantsOut: [],
       };
     }
 
@@ -202,12 +205,26 @@ async function updateBundle(productId) {
 
     if (allSimple) {
       let precioTotal = 0;
+      let minInv = Infinity;
       for (let i = 0; i < productosBundle.length; i++) {
         const producto = productosBundle[i];
         const cantidad = cantidades[i];
         const precio = producto.variants[0].price;
         precioTotal += cantidad * precio;
+        // inventario
+        const inventario = producto.variants[0].inventory_quantity;
+        const inventoryManagement = producto.variants[0].inventory_management;
+
+        if (inventoryManagement === "shopify") {
+          console.log("Inventario", inventario);
+          if (inventario / cantidad < minInv) {
+            minInv = Math.floor(inventario / cantidad);
+            console.log("Inventario", inventario, cantidad, minInv);
+          }
+        }
       }
+
+      console.log("Inventario minimo", minInv);
 
       const optionDefault = {
         name: "Title",
@@ -219,7 +236,11 @@ async function updateBundle(productId) {
         option1: "Default Title",
         price: precioTotal,
         title: "Default Title",
+        inventory_management: "shopify",
+        inventory_quantity: minInv,
       };
+
+      console.log(variantDefault);
 
       return {
         validBundle: true,
@@ -266,6 +287,7 @@ async function updateBundle(productId) {
           validBundle: false,
           error: "El bundle tiene más de 3 opciones",
           optionsOut: [],
+          variantsOut: [],
         };
       }
 
@@ -274,6 +296,7 @@ async function updateBundle(productId) {
           validBundle: false,
           error: "El bundle tiene más de 100 variantes",
           optionsOut: [],
+          variantsOut: [],
         };
       }
     }
@@ -289,10 +312,9 @@ async function updateBundle(productId) {
     if (optionsOut.length === 1) {
       const { values, productOriginalId, productOriginalTitle, name } =
         optionsOut[0];
-
-      // calcular el precio
       const variants = values.map((value) => {
         let priceTotal = 0;
+        let minInv = Infinity;
         for (let i = 0; i < productosBundle.length; i++) {
           const product = productosBundle[i];
           const cantidad = cantidades[i];
@@ -300,10 +322,30 @@ async function updateBundle(productId) {
           if (isSimpleProduct(product)) {
             precio = parseFloat(product.variants[0].price) * cantidad;
             priceTotal += precio;
+            const inventario = product.variants[0].inventory_quantity;
+            const inventoryManagement =
+              product.variants[0].inventory_management;
+
+            if (inventoryManagement === "shopify") {
+              if (inventario / cantidad < minInv) {
+                minInv = Math.floor(inventario / cantidad);
+                console.log("Inventario", inventario, cantidad, minInv);
+              }
+            }
           } else {
             const variant = product.variants.find((v) => v.option1 === value);
             precio = parseFloat(variant.price) * cantidad;
             priceTotal += precio;
+
+            const inventario = variant.inventory_quantity;
+            const inventoryManagement = variant.inventory_management;
+
+            if (inventoryManagement === "shopify") {
+              if (inventario / cantidad < minInv) {
+                minInv = Math.floor(inventario / cantidad);
+                console.log("Inventario", inventario, cantidad, minInv);
+              }
+            }
           }
         }
         return {
@@ -311,6 +353,8 @@ async function updateBundle(productId) {
           option2: null,
           option3: null,
           price: priceTotal,
+          inventory_management: "shopify",
+          inventory_quantity: minInv,
         };
       });
 
@@ -329,6 +373,8 @@ async function updateBundle(productId) {
         name: name2,
       } = optionsOut[1];
 
+      let minInv = Infinity;
+
       const variants = [];
 
       let sumaSimples = 0;
@@ -338,8 +384,20 @@ async function updateBundle(productId) {
 
         if (isSimpleProduct(product)) {
           sumaSimples += parseFloat(product.variants[0].price) * cantidad;
+
+          const inventario = product.variants[0].inventory_quantity;
+          const inventoryManagement = product.variants[0].inventory_management;
+
+          if (inventoryManagement === "shopify") {
+            if (inventario / cantidad < minInv) {
+              minInv = Math.floor(inventario / cantidad);
+              console.log("Inventario", inventario, cantidad, minInv);
+            }
+          }
         }
       }
+
+      console.log("Inventario minimo de los simples", minInv);
 
       for (const value1 of values1) {
         for (const value2 of values2) {
@@ -354,12 +412,21 @@ async function updateBundle(productId) {
               p.id === idProduct2
           );
 
+          let inventario = 0;
+          let inventoryManagement = "";
+
           if (productoDeterminaVariante) {
-            let precioDeterminaVariante =
-              productoDeterminaVariante.variants.find(
-                (v) => v.option1 === value1 && v.option2 === value2
-              ).price;
+            const variant = productoDeterminaVariante.variants.find(
+              (v) => v.option1 === value1 && v.option2 === value2
+            );
+            const t = variant.title;
+            let precioDeterminaVariante = variant.price;
             priceTotal += parseFloat(precioDeterminaVariante);
+
+            inventario = variant.inventory_quantity;
+            inventoryManagement = variant.inventory_management;
+
+            console.log("Variante - Inventario:", t, inventario);
           } else {
             let producto1, producto2;
             for (const p of productosBundle) {
@@ -380,25 +447,65 @@ async function updateBundle(productId) {
               if (producto1 && producto2) break;
             }
 
-            const precioDeterminaVariante1 = producto1.variants.find(
+            const variant1 = producto1.variants.find(
               (v) => v.option1 === value1
-            ).price;
-
-            const precioDeterminaVariante2 = producto2.variants.find(
+            );
+            const variant2 = producto2.variants.find(
               (v) => v.option1 === value2
-            ).price;
+            );
+
+            const precioDeterminaVariante1 = variant1.price;
+            const precioDeterminaVariante2 = variant2.price;
 
             priceTotal +=
               parseFloat(precioDeterminaVariante1) +
               parseFloat(precioDeterminaVariante2);
+
+            const inventario1 = variant1.inventory_quantity;
+            const inventoryManagement1 = variant1.inventory_management;
+
+            const inventario2 = variant2.inventory_quantity;
+            const inventoryManagement2 = variant2.inventory_management;
+
+            if (inventoryManagement1 === "shopify") {
+              if (
+                inventario1 / cantidades[productosBundle.indexOf(producto1)] <
+                inventario
+              ) {
+                inventario = Math.floor(
+                  inventario1 / cantidades[productosBundle.indexOf(producto1)]
+                );
+              }
+            }
+
+            if (inventoryManagement2 === "shopify") {
+              if (
+                inventario2 / cantidades[productosBundle.indexOf(producto2)] <
+                inventario
+              ) {
+                inventario = Math.floor(
+                  inventario2 / cantidades[productosBundle.indexOf(producto2)]
+                );
+              }
+            }
           }
           priceTotal += sumaSimples;
+
+          if (inventoryManagement === "shopify") {
+            if (inventario > minInv) {
+              inventario = minInv;
+            }
+          }
+
+          console.log("Inventario a asignar", inventario);
 
           variants.push({
             option1: value1,
             option2: value2,
             option3: null,
             price: priceTotal,
+            inventory_management: "shopify",
+            inventory_quantity: inventario,
           });
         }
       }
@@ -426,12 +533,24 @@ async function updateBundle(productId) {
       const variants = [];
 
       let sumaSimples = 0;
+
+      let minInv = Infinity;
       for (let i = 0; i < productosBundle.length; i++) {
         const product = productosBundle[i];
         const cantidad = cantidades[i];
 
         if (isSimpleProduct(product)) {
           sumaSimples += parseFloat(product.variants[0].price) * cantidad;
+        }
+
+        const inventario = product.variants[0].inventory_quantity;
+        const inventoryManagement = product.variants[0].inventory_management;
+
+        if (inventoryManagement === "shopify") {
+          if (inventario / cantidad < minInv) {
+            minInv = Math.floor(inventario / cantidad);
+            console.log("Inventario", inventario, cantidad, minInv);
+          }
         }
       }
 
@@ -451,19 +570,28 @@ async function updateBundle(productId) {
               )
             );
 
+            let inventario = 0;
+            let inventoryManagement = "";
+
             if (productoDeterminaVariante) {
-              let precioDeterminaVariante =
-                productoDeterminaVariante.variants.find(
-                  (v) =>
-                    v.option1 === value1 &&
-                    v.option2 === value2 &&
-                    v.option3 === value3 &&
-                    p.id === idProduct1 &&
-                    p.id === idProduct2 &&
-                    p.id === idProduct3
-                ).price;
+              let variante = productoDeterminaVariante.variants.find(
+                (v) =>
+                  v.option1 === value1 &&
+                  v.option2 === value2 &&
+                  v.option3 === value3 &&
+                  p.id === idProduct1 &&
+                  p.id === idProduct2 &&
+                  p.id === idProduct3
+              );
+
+              let precioDeterminaVariante = variante.price;
 
               priceTotal += parseFloat(precioDeterminaVariante);
+
+              inventario = variante.inventory_quantity;
+              inventoryManagement = variante.inventory_management;
+
+              console.log("Variante - Inventario:", variante.title, inventario);
             } else {
               const producto1 = productosBundle.find((p) =>
                 p.variants.some(
@@ -502,14 +630,14 @@ async function updateBundle(productId) {
               );
 
               if (producto1 && product2) {
-                const precioDeterminaVariante1 = producto1.variants.find(
+                const var1 = producto1.variants.find(
                   (v) =>
                     (v.option1 === value1 && v.option2 === value2) ||
                     (v.option1 === value1 && v.option3 === value3) ||
                     (v.option2 === value2 && v.option3 === value3)
-                ).price;
+                );
 
-                const precioDeterminaVariante2 = product2.variants.find(
+                const var2 = product2.variants.find(
                   (v) =>
                     (v.option1 === value1 &&
                       v.option2 === null &&
@@ -520,7 +648,10 @@ async function updateBundle(productId) {
                     (v.option1 === value3 &&
                       v.option2 === null &&
                       v.option3 === null)
-                ).price;
+                );
+
+                const precioDeterminaVariante1 = var1.price;
+                const precioDeterminaVariante2 = var2.price;
 
                 const cantidad1 =
                   cantidades[productosBundle.indexOf(producto1)];
@@ -529,8 +660,28 @@ async function updateBundle(productId) {
                 priceTotal +=
                   parseFloat(precioDeterminaVariante1) * cantidad1 +
                   parseFloat(precioDeterminaVariante2) * cantidad2;
+
+                const inventario1 = var1.inventory_quantity;
+                const inventoryManagement1 = var1.inventory_management;
+
+                const inventario2 = var2.inventory_quantity;
+                const inventoryManagement2 = var2.inventory_management;
+
+                if (inventoryManagement1 === "shopify") {
+                  if (inventario1 / cantidad1 < inventario) {
+                    inventario = Math.floor(inventario1 / cantidad1);
+                  }
+                }
+
+                if (inventoryManagement2 === "shopify") {
+                  if (inventario2 / cantidad2 < inventario) {
+                    inventario = Math.floor(inventario2 / cantidad2);
+                  }
+                }
               } else {
                 let p1, p2, p3;
+
+                let v1, v2, v3;
 
                 let precio1 = 0;
                 let precio2 = 0;
@@ -562,34 +713,106 @@ async function updateBundle(productId) {
                 }
 
                 if (p1) {
-                  precio1 = parseFloat(
-                    p1.variants.find((v) => v.option1 === value1).price
-                  );
+                  v1 = p1.variants.find((v) => v.option1 === value1);
+
+                  precio1 = parseFloat(v1.price);
                 }
 
                 if (p2) {
-                  precio2 = parseFloat(
-                    p2.variants.find((v) => v.option1 === value2).price
-                  );
+                  v2 = p2.variants.find((v) => v.option1 === value2);
+                  precio2 = parseFloat(v2.price);
                 }
 
                 if (p3) {
-                  precio3 = parseFloat(
-                    p3.variants.find((v) => v.option1 === value3).price
-                  );
+                  v3 = p3.variants.find((v) => v.option1 === value3);
+                  precio3 = parseFloat(v3.price);
                 }
 
                 priceTotal += precio1 + precio2 + precio3;
+
+                if (v1) {
+                  const inventario1 = v1.inventory_quantity;
+                  const inventoryManagement1 = v1.inventory_management;
+
+                  if (inventoryManagement1 === "shopify") {
+                    if (
+                      inventario1 / cantidades[productosBundle.indexOf(p1)] <
+                      minInv
+                    ) {
+                      minInv = Math.floor(
+                        inventario1 / cantidades[productosBundle.indexOf(p1)]
+                      );
+                      console.log(
+                        "Inventario",
+                        inventario1,
+                        cantidades[productosBundle.indexOf(p1)],
+                        minInv
+                      );
+                    }
+                  }
+                }
+
+                if (v2) {
+                  const inventario2 = v2.inventory_quantity;
+                  const inventoryManagement2 = v2.inventory_management;
+
+                  if (inventoryManagement2 === "shopify") {
+                    if (
+                      inventario2 / cantidades[productosBundle.indexOf(p2)] <
+                      minInv
+                    ) {
+                      minInv = Math.floor(
+                        inventario2 / cantidades[productosBundle.indexOf(p2)]
+                      );
+                      console.log(
+                        "Inventario",
+                        inventario2,
+                        cantidades[productosBundle.indexOf(p2)],
+                        minInv
+                      );
+                    }
+                  }
+                }
+
+                if (v3) {
+                  const inventario3 = v3.inventory_quantity;
+                  const inventoryManagement3 = v3.inventory_management;
+
+                  if (inventoryManagement3 === "shopify") {
+                    if (
+                      inventario3 / cantidades[productosBundle.indexOf(p3)] <
+                      minInv
+                    ) {
+                      minInv = Math.floor(
+                        inventario3 / cantidades[productosBundle.indexOf(p3)]
+                      );
+                      console.log(
+                        "Inventario",
+                        inventario3,
+                        cantidades[productosBundle.indexOf(p3)],
+                        minInv
+                      );
+                    }
+                  }
+                }
               }
             }
 
             priceTotal += sumaSimples;
+
+            if (inventoryManagement === "shopify") {
+              if (inventario > minInv) {
+                inventario = minInv;
+              }
+            }
 
             variants.push({
               option1: value1,
               option2: value2,
               option3: value3,
               price: priceTotal,
+              inventory_management: "shopify",
+              inventory_quantity: inventario,
             });
           }
         }
@@ -616,6 +839,7 @@ async function updateBundle(productId) {
       validBundle: false,
       error: "Error validando el bundle",
       optionsOut: [],
+      variantsOut: [],
     };
   }
 }
@@ -715,6 +939,7 @@ async function handleProductUp(pId) {
     const id = pId;
     const bundleId = id;
     const p = await processProduct(pId);
+    // console.log("Producto procesado:", p);
 
     const { validBundle, error, optionsOut, variantsOut } = await updateBundle(
       id
@@ -722,8 +947,11 @@ async function handleProductUp(pId) {
 
     const updatePromises = [];
 
+    const updateInventoryPromises = [];
+
     if (validBundle) {
       const bundle = await getProductById(bundleId);
+      // console.log("Bundle", bundle);
       const { options, variants } = bundle;
       let updateOptions = false;
       let updateVariants = false;
@@ -785,18 +1013,52 @@ async function handleProductUp(pId) {
       }
 
       if (updateOptions || updateVariants) {
-        updatePromises.push(() =>
-          shopify.product.update(bundleId, {
+        updatePromises.push(async () => {
+          console.log(`Updating bundle with ID: ${bundleId}`);
+          const p = await shopify.product.update(bundleId, {
             options: optionsOut,
             variants: variantsOut,
-          })
-        );
+          });
+        });
       }
     }
     if (updatePromises.length !== 0) {
       await processPromisesBatch(updatePromises);
+      console.log("Bundle", bundleId, "actualizado");
     }
 
+    // actualizar los inventarios
+
+    // obtener las variantes del bundle
+    const bundle = await getProductById(bundleId);
+
+    const variants = bundle.variants;
+
+    if (variantsOut.length && variantsOut.length === variants.length) {
+      for (let i = 0; i < variantsOut.length; i++) {
+        const variantOut = variantsOut[i];
+        const inventory_quantity = variantOut.inventory_quantity;
+        const variant = variants[i];
+        // console.log("Variantes", variant, variantOut);
+
+        if (variant.inventory_management === "shopify") {
+          updateInventoryPromises.push(async () => {
+            console.log("Actualizando inventario de la variante", variant.id);
+            console.log("Inventario", inventory_quantity);
+            await setInventoryLevel(variant.id, inventory_quantity);
+          });
+        }
+      }
+
+      if (updateInventoryPromises.length !== 0) {
+        await processPromisesBatch(updateInventoryPromises);
+        console.log("Inventarios del bundle", bundleId, "actualizados");
+      }
+    }
+
+    // console.log("Bundle actualizado:", p);
+
+    // actualizar los bundles que contienen el producto
     const updatePromises2 = [];
 
     const bundles = await getBundlesDBWithProduct(bundleId);
@@ -806,8 +1068,9 @@ async function handleProductUp(pId) {
         const id = bundle.productId;
         updatePromises2.push(() => handleProductUp(id));
       }
-
       await processPromisesBatch(updatePromises2);
+    } else {
+      console.log("El producto", bundleId, "no es parte de ningún bundle");
     }
   } catch (error) {
     console.log("Error actualizando el bundle:", error);
@@ -860,6 +1123,184 @@ async function getProductDBById(id) {
   }
 }
 
+async function listProducts() {
+  let allProducts = [];
+  let params = {
+    limit: 250,
+    fields: ["id", "title", "product_type", "variants", "options"],
+    order: "id asc",
+  };
+
+  let hasMoreProducts = true;
+
+  do {
+    let products = await retryWithBackoff(() => {
+      return shopify.product.list(params);
+    });
+
+    products = products.sort((a, b) => a.id - b.id);
+
+    console.log(products.length);
+    allProducts = allProducts.concat(products);
+    if (products.length < params.limit) {
+      hasMoreProducts = false;
+    } else {
+      params.since_id = products[products.length - 1].id;
+    }
+  } while (hasMoreProducts);
+
+  return allProducts;
+}
+
+async function getInventoryLevels(inventoryItemId) {
+  try {
+    const inventoryLevels = await retryWithBackoff(() => {
+      return shopify.inventoryLevel.list({
+        inventory_item_ids: inventoryItemId,
+      });
+    });
+    return inventoryLevels;
+  } catch (error) {
+    console.error("Error obteniendo los niveles de inventario:", error);
+    return null;
+  }
+}
+
+async function reducirInventario(variantId, quantityToReduce) {
+  try {
+    const variant = await getVariant(variantId);
+
+    if (!variant.inventory_management) {
+      console.log("El producto no tiene inventario");
+      return;
+    }
+    const inventoryItemId = variant.inventory_item_id;
+
+    const inventoryLevels = await getInventoryLevels(inventoryItemId);
+
+    const index = inventoryLevels.findIndex(
+      (inventoryLevel) => inventoryLevel.available > 0
+    );
+
+    if (index === -1) {
+      // disminuir el inventario del primer nivel
+      await retryWithBackoff(() => {
+        return shopify.inventoryLevel.set({
+          location_id: inventoryLevels[0].location_id,
+          inventory_item_id: inventoryItemId,
+          available: inventoryLevels[0].available - quantityToReduce,
+        });
+      });
+    } else {
+      // disminuir el inventario del nivel que tenga inventario
+      await retryWithBackoff(() => {
+        return shopify.inventoryLevel.set({
+          location_id: inventoryLevels[index].location_id,
+          inventory_item_id: inventoryItemId,
+          available: inventoryLevels[index].available - quantityToReduce,
+        });
+      });
+    }
+  } catch (error) {
+    console.error("Error actualizando el inventario:", error);
+    return null;
+  }
+}
+
+async function aumentarInventario(variantId, quantityToAdd) {
+  try {
+    const variant = await getVariant(variantId);
+
+    if (!variant.inventory_management) {
+      console.log("El producto no tiene inventario");
+      return;
+    }
+    const inventoryItemId = variant.inventory_item_id;
+
+    const inventoryLevels = await getInventoryLevels(inventoryItemId);
+
+    const index = inventoryLevels.findIndex(
+      (inventoryLevel) => inventoryLevel.available > 0
+    );
+
+    if (index === -1) {
+      // aumentar el inventario del primer nivel
+      await retryWithBackoff(() => {
+        return shopify.inventoryLevel.set({
+          location_id: inventoryLevels[0].location_id,
+          inventory_item_id: inventoryItemId,
+          available: inventoryLevels[0].available + quantityToAdd,
+        });
+      });
+    } else {
+      // aumentar el inventario del nivel que tenga inventario
+      await retryWithBackoff(() => {
+        return shopify.inventoryLevel.set({
+          location_id: inventoryLevels[index].location_id,
+          inventory_item_id: inventoryItemId,
+          available: inventoryLevels[index].available + quantityToAdd,
+        });
+      });
+    }
+  } catch (error) {
+    console.error("Error actualizando el inventario:", error);
+    return null;
+  }
+}
+
+async function setInventoryLevel(variantId, quantity) {
+  try {
+    const variant = await getVariant(variantId);
+
+    if (!variant.inventory_management) {
+      console.log("El producto no tiene inventario");
+      return;
+    }
+    const inventoryItemId = variant.inventory_item_id;
+
+    const inventoryLevels = await getInventoryLevels(inventoryItemId);
+
+    const index = inventoryLevels.findIndex(
+      (inventoryLevel) => inventoryLevel.available > 0
+    );
+
+    if (index === -1) {
+      // aumentar el inventario del primer nivel
+      await retryWithBackoff(() => {
+        return shopify.inventoryLevel.set({
+          location_id: inventoryLevels[0].location_id,
+          inventory_item_id: inventoryItemId,
+          available: quantity,
+        });
+      });
+    } else {
+      // aumentar el inventario del nivel que tenga inventario
+      await retryWithBackoff(() => {
+        return shopify.inventoryLevel.set({
+          location_id: inventoryLevels[index].location_id,
+          inventory_item_id: inventoryItemId,
+          available: quantity,
+        });
+      });
+    }
+  } catch (error) {
+    console.error("Error actualizando el inventario:", error);
+    return null;
+  }
+}
+
+async function getVariant(variantId) {
+  try {
+    const variant = await retryWithBackoff(() => {
+      return shopify.productVariant.get(variantId);
+    });
+    return variant;
+  } catch (error) {
+    console.error("Error obteniendo el variant:", error);
+    return null;
+  }
+}
+
 module.exports = {
   getProductDBById,
   getProductCustomMetafields,
@@ -870,4 +1311,7 @@ module.exports = {
   isValidBundle,
   handleProductUp,
   getBundlesDBWithProduct,
+  listProducts,
+  reducirInventario,
+  aumentarInventario,
 };
