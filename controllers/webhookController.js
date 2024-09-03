@@ -4,7 +4,7 @@ const shopifyService = require("../services/shopifyService");
 const { globosNumerados, globosLatex } = require("../utils/products");
 const { extractNumber } = require("../utils/functions");
 const processedProducts = new Set();
-
+let orderProcessingFlag = false;
 let processing = false;
 const queue = [];
 
@@ -59,6 +59,7 @@ async function handleProductUpdate(req, res) {
       productData.title
     );
 
+    // Si el producto ya ha sido procesado recientemente, ignorar
     if (processedProducts.has(productData.id)) {
       console.log(
         "Producto",
@@ -74,11 +75,23 @@ async function handleProductUpdate(req, res) {
         );
     }
 
+    // Si se está procesando una orden, no procesar la actualización del producto
+    if (orderProcessingFlag) {
+      console.log(
+        `Producto ${productData.id} - ${productData.title} no procesado debido a procesamiento de orden en curso.`
+      );
+      return res
+        .status(200)
+        .send(
+          `Producto ${productData.id} - ${productData.title} no procesado debido a procesamiento de orden en curso.`
+        );
+    }
+
     // Marca el producto como procesado
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 120000);
 
-    // Enviar respuesta inmediatamente
+    // Respuesta inmediata
     res
       .status(200)
       .send(
@@ -110,10 +123,13 @@ async function handleOrderCreate(req, res) {
   try {
     const orderData = JSON.parse(req.body);
 
-    // Enviar respuesta inmediatamente
+    // Establecer el flag para indicar que se está procesando una orden
+    orderProcessingFlag = true;
+
+    // Respuesta inmediata
     res.status(200).send("Webhook recibido");
 
-    // Procesar el pedido en segundo plano
+    // Procesar la orden en segundo plano
     shopifyService
       .handleOrderCreate(orderData)
       .then(() => {
@@ -121,17 +137,18 @@ async function handleOrderCreate(req, res) {
       })
       .catch((error) => {
         console.error("Error al procesar pedido:", orderData.id, error);
+      })
+      .finally(() => {
+        // Desactivar el flag una vez que se haya procesado la orden
+        orderProcessingFlag = false;
       });
   } catch (error) {
     console.error("Error handling order create webhook:", error);
-    // Aunque el procesamiento de pedidos ya debería haber enviado una respuesta,
-    // si hay un error al analizar el cuerpo de la solicitud, se envía un error interno.
     if (!res.headersSent) {
       res.status(500).send("Internal Server Error");
     }
   }
 }
-
 // Función para agregar peticiones a la cola
 async function addToQueue(req, res, type) {
   queue.push({ req, res, type });
