@@ -58,6 +58,7 @@ async function handleProductUpdate(req, res) {
       "-",
       productData.title
     );
+
     if (processedProducts.has(productData.id)) {
       console.log(
         "Producto",
@@ -69,33 +70,35 @@ async function handleProductUpdate(req, res) {
       return res
         .status(200)
         .send(
-          "Producto",
-          productData.id,
-          "-",
-          productData.title,
-          "ya procesado recientemente."
+          `Producto ${productData.id} - ${productData.title} ya procesado recientemente.`
         );
     }
 
+    // Marca el producto como procesado
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 300000);
 
-    shopifyService.handleProductUp(productData.id);
-
-    console.log(
-      "Webhook procesado para el producto",
-      productData.id,
-      "-",
-      productData.title
-    );
-    return res
+    // Enviar respuesta inmediatamente
+    res
       .status(200)
       .send(
-        "Webhook procesado para el producto",
-        productData.id,
-        "-",
-        productData.title
+        `Webhook recibido y procesado para el producto ${productData.id} - ${productData.title}`
       );
+
+    // Procesar el producto en segundo plano
+    shopifyService
+      .handleProductUp(productData.id)
+      .then(() => {
+        console.log(
+          `Webhook procesado con éxito para el producto ${productData.id} - ${productData.title}`
+        );
+      })
+      .catch((error) => {
+        console.error(
+          `Error al procesar webhook para el producto ${productData.id} - ${productData.title}:`,
+          error
+        );
+      });
   } catch (error) {
     console.error("Error handling product update webhook:", error);
     res.status(500).send("Internal Server Error");
@@ -107,14 +110,25 @@ async function handleOrderCreate(req, res) {
   try {
     const orderData = JSON.parse(req.body);
 
-    // console.log(JSON.stringify(orderData, null, 2));
+    // Enviar respuesta inmediatamente
+    res.status(200).send("Webhook recibido");
 
-    shopifyService.handleOrderCreate(orderData);
-
-    return res.status(200).send("Webhook recibido");
+    // Procesar el pedido en segundo plano
+    shopifyService
+      .handleOrderCreate(orderData)
+      .then(() => {
+        console.log("Pedido procesado con éxito:", orderData.id);
+      })
+      .catch((error) => {
+        console.error("Error al procesar pedido:", orderData.id, error);
+      });
   } catch (error) {
     console.error("Error handling order create webhook:", error);
-    res.status(500).send("Internal Server Error");
+    // Aunque el procesamiento de pedidos ya debería haber enviado una respuesta,
+    // si hay un error al analizar el cuerpo de la solicitud, se envía un error interno.
+    if (!res.headersSent) {
+      res.status(500).send("Internal Server Error");
+    }
   }
 }
 
