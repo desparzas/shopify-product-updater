@@ -160,6 +160,7 @@ async function updateBundle(productId) {
         error: "El bundle no existe en Shopify",
         optionsOut: [],
         variantsOut: [],
+        isNormal: true,
       };
     }
 
@@ -167,9 +168,10 @@ async function updateBundle(productId) {
     if (!bundleFields) {
       return {
         validBundle: false,
-        error: "El producto no tiene campos de bundle",
+        error: "El producto no tiene campos de bundle, es un producto normal",
         optionsOut: [],
         variantsOut: [],
+        isNormal: true,
       };
     }
 
@@ -178,9 +180,11 @@ async function updateBundle(productId) {
     if (productos.length === 0) {
       return {
         validBundle: false,
-        error: "El bundle no tiene productos",
+        error:
+          "El producto no tiene productos en el bundle, por lo tano es un producto normal",
         optionsOut: [],
         variantsOut: [],
+        isNormal: true,
       };
     }
 
@@ -245,6 +249,7 @@ async function updateBundle(productId) {
         error: "",
         optionsOut,
         variantsOut: [variantDefault],
+        isNormal: false,
       };
     }
 
@@ -285,6 +290,7 @@ async function updateBundle(productId) {
           error: "El bundle tiene más de 3 opciones",
           optionsOut: [],
           variantsOut: [],
+          isNormal: false,
         };
       }
       if (variantsCount > 100) {
@@ -292,8 +298,8 @@ async function updateBundle(productId) {
           validBundle: false,
           error: "El bundle tiene más de 100 variantes",
           optionsOut: [],
-
           variantsOut: [],
+          isNormal: false,
         };
       }
     }
@@ -840,6 +846,7 @@ async function updateBundle(productId) {
       error: "",
       optionsOut,
       variantsOut,
+      isNormal: false,
     };
   } catch (error) {
     console.error("Error actualizando el bundle", error);
@@ -866,6 +873,10 @@ async function isValidBundle(productId) {
     }
 
     const { productos, cantidades } = bundleFields;
+
+    if (productos.length === 0) {
+      return false;
+    }
 
     const productosPromises = productos.map((id) => {
       return () => getProductById(id);
@@ -946,155 +957,153 @@ async function handleProductUp(pId) {
   try {
     const id = pId;
     const bundleId = id;
-    const p = await processProduct(pId);
-    // console.log("Producto procesado:", p);
+    await processProduct(pId);
 
-    const { validBundle, error, optionsOut, variantsOut } = await updateBundle(
-      id
-    );
+    const { validBundle, error, optionsOut, variantsOut, isNormal } =
+      await updateBundle(id);
 
-    // console.log("Valid Bundle", validBundle);
-    // console.log("Error", error);
-    // console.log("Options", optionsOut);
-    // console.log("Variants", variantsOut);
+    // ACTUALIZAR EL BUNDLE
 
-    const updatePromises = [];
+    if (!isNormal) {
+      const updatePromises = [];
+      const updateInventoryPromises = [];
 
-    const updateInventoryPromises = [];
+      if (validBundle) {
+        const bundle = await getProductById(bundleId);
+        const { options, variants } = bundle;
 
-    if (validBundle) {
-      const bundle = await getProductById(bundleId);
-      // console.log("Bundle", bundle);
-      const { options, variants } = bundle;
+        let updateOptions = false;
+        let updateVariants = false;
 
-      let updateOptions = false;
-      let updateVariants = false;
+        if (options.length !== optionsOut.length) {
+          updateOptions = true;
+        }
 
-      if (options.length !== optionsOut.length) {
-        updateOptions = true;
-      }
+        if (variants.length !== variantsOut.length) {
+          updateVariants = true;
+        }
 
-      if (variants.length !== variantsOut.length) {
-        updateVariants = true;
-      }
+        if (!(updateOptions || updateVariants)) {
+          for (let i = 0; i < options.length; i++) {
+            const option = options[i];
+            const optionOut = optionsOut[i];
 
-      if (!(updateOptions || updateVariants)) {
-        for (let i = 0; i < options.length; i++) {
-          const option = options[i];
-          const optionOut = optionsOut[i];
+            if (
+              option.name !== optionOut.name ||
+              option.values.length !== optionOut.values.length
+            ) {
+              updateOptions = true;
+              break;
+            }
 
-          if (
-            option.name !== optionOut.name ||
-            option.values.length !== optionOut.values.length
-          ) {
-            updateOptions = true;
-            break;
+            const { values } = option;
+            const { values: valuesOut } = optionOut;
+
+            for (let j = 0; j < values.length; j++) {
+              const { value } = values[j];
+              const { value: valueOut } = valuesOut[j];
+
+              if (value !== valueOut) {
+                updateOptions = true;
+                break;
+              }
+            }
           }
 
-          const { values } = option;
-          const { values: valuesOut } = optionOut;
+          for (let i = 0; i < variants.length; i++) {
+            const variant = variants[i];
+            const variantOut = variantsOut[i];
+            const { option1, option2, option3, price } = variant;
+            const {
+              option1: option1Out,
+              option2: option2Out,
+              option3: option3Out,
+              price: priceOut,
+            } = variantOut;
 
-          for (let j = 0; j < values.length; j++) {
-            const { value } = values[j];
-            const { value: valueOut } = valuesOut[j];
-
-            if (value !== valueOut) {
-              updateOptions = true;
+            if (
+              option1 !== option1Out ||
+              option2 !== option2Out ||
+              option3 !== option3Out ||
+              parseFloat(price) !== parseFloat(priceOut)
+            ) {
+              updateVariants = true;
               break;
             }
           }
         }
 
-        for (let i = 0; i < variants.length; i++) {
-          const variant = variants[i];
-          const variantOut = variantsOut[i];
-          const { option1, option2, option3, price } = variant;
-          const {
-            option1: option1Out,
-            option2: option2Out,
-            option3: option3Out,
-            price: priceOut,
-          } = variantOut;
-
-          if (
-            option1 !== option1Out ||
-            option2 !== option2Out ||
-            option3 !== option3Out ||
-            parseFloat(price) !== parseFloat(priceOut)
-          ) {
-            updateVariants = true;
-            break;
-          }
+        if (updateOptions || updateVariants) {
+          updatePromises.push(async () => {
+            console.log(`Updating bundle with ID: ${bundleId}`);
+            const p = await shopify.product.update(bundleId, {
+              options: optionsOut,
+              variants: variantsOut,
+            });
+          });
         }
-      }
-
-      if (updateOptions || updateVariants) {
+      } else {
+        console.log(
+          "El producto",
+          bundleId,
+          "no es un producto normal, pero tampoco es un bundle válido"
+        );
         updatePromises.push(async () => {
-          console.log(`Updating bundle with ID: ${bundleId}`);
           const p = await shopify.product.update(bundleId, {
-            options: optionsOut,
-            variants: variantsOut,
+            options: [
+              {
+                name: "Title",
+                values: ["Default Title"],
+              },
+            ],
+            variants: [
+              {
+                option1: "Default Title",
+                price: 0,
+              },
+            ],
           });
         });
       }
-    }
-    if (updatePromises.length !== 0) {
-      await processPromisesBatch(updatePromises);
-      console.log("Bundle", bundleId, "actualizado");
-    }
+      if (updatePromises.length !== 0) {
+        await processPromisesBatch(updatePromises);
+        console.log("Bundle", bundleId, "actualizado");
+      }
+      if (validBundle) {
+        const bundle = await getProductById(bundleId);
+        const variants = bundle.variants;
 
-    // actualizar los inventarios
+        if (variantsOut.length && variantsOut.length === variants.length) {
+          for (let i = 0; i < variantsOut.length; i++) {
+            const variantOut = variantsOut[i];
+            const variant = variants[i];
+            let inventory_quantity = parseInt(variantOut.inventory_quantity);
+            let actual_inventory = parseInt(variant.inventory_quantity);
+            if (variant.inventory_management === "shopify") {
+              if (inventory_quantity !== actual_inventory) {
+                updateInventoryPromises.push(async () => {
+                  console.log(
+                    "Actualizando inventario del producto",
+                    variant.id
+                  );
+                  await setInventoryLevel(variant.id, inventory_quantity);
+                });
+              }
+            }
+          }
 
-    // obtener las variantes del bundle
-    const bundle = await getProductById(bundleId);
-
-    const variants = bundle.variants;
-
-    if (variantsOut.length && variantsOut.length === variants.length) {
-      for (let i = 0; i < variantsOut.length; i++) {
-        const variantOut = variantsOut[i];
-        const variant = variants[i];
-        let inventory_quantity = parseInt(variantOut.inventory_quantity);
-        let actual_inventory = parseInt(variant.inventory_quantity);
-        let titleOut = variantOut.title;
-        let title = variant.title;
-
-        // console.log("Variantes", variant, variantOut);
-
-        if (variant.inventory_management === "shopify") {
-          if (inventory_quantity !== actual_inventory) {
-            updateInventoryPromises.push(async () => {
-              console.log(
-                "Actualizando inventario de la variante",
-                variant.id,
-                "a",
-                inventory_quantity
-              );
-              // console.log("Inventario", inventory_quantity);
-              await setInventoryLevel(variant.id, inventory_quantity);
-            });
+          if (updateInventoryPromises.length !== 0) {
+            console.log("Actualizando inventarios del bundle", bundleId);
+            await processPromisesBatch(updateInventoryPromises);
           }
         }
       }
-
-      if (updateInventoryPromises.length !== 0) {
-        console.log("Actualizando inventarios del bundle", bundleId);
-        // console.log("Promesas", updateInventoryPromises.length);
-        await processPromisesBatch(updateInventoryPromises);
-        console.log("Inventarios del bundle", bundleId, "actualizados");
-      } else {
-        console.log(
-          "No hay inventarios para actualizar en el bundle",
-          bundleId
-        );
-      }
+    } else {
+      console.log("El producto", bundleId, "es un producto normal");
     }
 
-    // console.log("Bundle actualizado:", p);
-
-    // actualizar los bundles que contienen el producto
+    // ACTUALIZAR LOS BUNDLES QUE CONTIENEN EL PRODUCTO
     const updatePromises2 = [];
-
     const bundles = await getBundlesDBWithProduct(bundleId);
 
     if (bundles.length !== 0) {
@@ -1104,8 +1113,6 @@ async function handleProductUp(pId) {
         updatePromises2.push(() => handleProductUp(id));
       }
       await processPromisesBatch(updatePromises2);
-    } else {
-      console.log("El producto", bundleId, "no es parte de ningún bundle");
     }
   } catch (error) {
     console.log("Error actualizando el bundle:", error);
@@ -1201,6 +1208,7 @@ async function getInventoryLevels(inventoryItemId) {
 
 async function reducirInventario(variantId, quantityToReduce) {
   try {
+    let q = parseInt(quantityToReduce);
     const variant = await getVariant(variantId);
 
     if (!variant.inventory_management) {
@@ -1221,7 +1229,7 @@ async function reducirInventario(variantId, quantityToReduce) {
         return shopify.inventoryLevel.set({
           location_id: inventoryLevels[0].location_id,
           inventory_item_id: inventoryItemId,
-          available: inventoryLevels[0].available - quantityToReduce,
+          available: inventoryLevels[0].available - q,
         });
       });
     } else {
@@ -1230,7 +1238,7 @@ async function reducirInventario(variantId, quantityToReduce) {
         return shopify.inventoryLevel.set({
           location_id: inventoryLevels[index].location_id,
           inventory_item_id: inventoryItemId,
-          available: inventoryLevels[index].available - quantityToReduce,
+          available: inventoryLevels[index].available - q,
         });
       });
     }
@@ -1242,6 +1250,7 @@ async function reducirInventario(variantId, quantityToReduce) {
 
 async function aumentarInventario(variantId, quantityToAdd) {
   try {
+    let q = parseInt(quantityToAdd);
     const variant = await getVariant(variantId);
 
     if (!variant.inventory_management) {
@@ -1262,7 +1271,7 @@ async function aumentarInventario(variantId, quantityToAdd) {
         return shopify.inventoryLevel.set({
           location_id: inventoryLevels[0].location_id,
           inventory_item_id: inventoryItemId,
-          available: inventoryLevels[0].available + quantityToAdd,
+          available: inventoryLevels[0].available + q,
         });
       });
     } else {
@@ -1271,7 +1280,7 @@ async function aumentarInventario(variantId, quantityToAdd) {
         return shopify.inventoryLevel.set({
           location_id: inventoryLevels[index].location_id,
           inventory_item_id: inventoryItemId,
-          available: inventoryLevels[index].available + quantityToAdd,
+          available: inventoryLevels[index].available + q,
         });
       });
     }
@@ -1283,6 +1292,7 @@ async function aumentarInventario(variantId, quantityToAdd) {
 
 async function setInventoryLevel(variantId, quantity) {
   try {
+    let q = parseInt(quantity);
     const variant = await getVariant(variantId);
 
     if (!variant.inventory_management) {
@@ -1303,7 +1313,7 @@ async function setInventoryLevel(variantId, quantity) {
         return shopify.inventoryLevel.set({
           location_id: inventoryLevels[0].location_id,
           inventory_item_id: inventoryItemId,
-          available: quantity,
+          available: q,
         });
       });
     } else {
@@ -1312,7 +1322,7 @@ async function setInventoryLevel(variantId, quantity) {
         return shopify.inventoryLevel.set({
           location_id: inventoryLevels[index].location_id,
           inventory_item_id: inventoryItemId,
-          available: quantity,
+          available: q,
         });
       });
     }
@@ -1334,7 +1344,870 @@ async function getVariant(variantId) {
   }
 }
 
-async function handleOrderCreate(orderData) {}
+async function recursiveProductDiscount(product_id, variant_id, quantity) {
+  const isBundle = await isValidBundle(product_id);
+  const productData = await getProductById(product_id);
+  const variantRecibida = productData.variants.find((v) => v.id === variant_id);
+  const updateProductsPromises = [];
+  const processBundlesPromises = [];
+
+  if (isBundle) {
+    console.log("-".repeat(50));
+    if (isSimpleProduct(productData)) {
+      console.log(
+        `El producto ${productData.title} es un bundle, además es un producto simple`
+      );
+      const { productos, cantidades } = await getBundleFields(product_id);
+      console.log("Cantidad", quantity);
+      console.log("Productos", productos);
+      console.log("Cantidades", cantidades);
+
+      const bundles = [];
+
+      for (const p of productos) {
+        const isBundle = await isValidBundle(p);
+        if (isBundle) {
+          bundles.push(p);
+        }
+      }
+
+      const indexCantidadesBundles = [];
+      for (let i = 0; i < productos.length; i++) {
+        if (bundles.includes(productos[i])) {
+          indexCantidadesBundles.push(i);
+        }
+      }
+
+      const pFiltered = productos.filter((p) => !bundles.includes(p));
+
+      const indexCantidadesProductos = [];
+      for (let i = 0; i < productos.length; i++) {
+        if (!bundles.includes(productos[i])) {
+          indexCantidadesProductos.push(i);
+        }
+      }
+
+      console.log(
+        `Bundles dentro del producto ${productData.title}: ${bundles} - ${indexCantidadesBundles}`
+      );
+      console.log(
+        `Productos dentro del producto ${productData.title}: ${pFiltered} - ${indexCantidadesProductos}`
+      );
+
+      // recorrer los productos que son bundles
+      for (let i = 0; i < indexCantidadesBundles.length; i++) {
+        const index = indexCantidadesBundles[i];
+        const p = productos[index];
+        const pData = await getProductById(p);
+        let c = cantidades[index];
+        c = c * quantity;
+        processBundlesPromises.push(() => {
+          console.log(
+            `Procesando bundle ${pData.title} con id ${p}, su inventario es ${pData.variants[0].inventory_quantity}, reduciendo ${c}`
+          );
+          return recursiveProductDiscount(p, variant_id, c);
+        });
+      }
+
+      // recorrer los productos que no son bundles
+      for (let i = 0; i < indexCantidadesProductos.length; i++) {
+        const index = indexCantidadesProductos[i];
+        const p = productos[index];
+        const pData = await getProductById(p);
+        let c = cantidades[index];
+        c = c * quantity;
+        const inventory_management = pData.variants[0].inventory_management;
+        const inventory_quantity = pData.variants[0].inventory_quantity;
+
+        if (inventory_management === "shopify") {
+          updateProductsPromises.push(async () => {
+            console.log(
+              `Reduciendo inventario de ${pData.title}: ${inventory_quantity} - ${c}`
+            );
+            return reducirInventario(pData.variants[0].id, c);
+          });
+        }
+      }
+    } else {
+      console.log(
+        `El producto ${productData.title} es un bundle, además es un producto con opciones`
+      );
+      console.log("Cantidad", quantity);
+      const { productos, cantidades } = await getBundleFields(product_id);
+      console.log("Productos", productos);
+      console.log("Cantidades", cantidades);
+      const { title: titleVariant } = variantRecibida;
+      console.log("Variante específica", titleVariant);
+
+      const { options } = productData;
+
+      if (options.length === 1) {
+        const option1 = options[0];
+        const { name: nameOption1, values: valuesOption1 } = option1;
+        console.log("Opción 1", nameOption1, " - ", valuesOption1);
+
+        const productosPromises = productos.map((id) => {
+          return () => getProductById(id);
+        });
+        const productosBundle = await processPromisesBatch(productosPromises);
+
+        let productoDeterminaVariante = null;
+        let variantDeterminaVariante = null;
+
+        for (const p of productosBundle) {
+          const { title } = p;
+          if (nameOption1.includes(title)) {
+            const variantes = p.variants;
+            const variant = variantes.find(
+              (v) =>
+                v.title === variantRecibida.title &&
+                valuesOption1.includes(v.option1)
+            );
+            if (variant) {
+              productoDeterminaVariante = p;
+              variantDeterminaVariante = variant;
+            }
+          }
+        }
+
+        if (productoDeterminaVariante) {
+          console.log(
+            `El producto ${productoDeterminaVariante.title} determina la variante ${titleVariant}`
+          );
+
+          let cantidadDeterminante =
+            cantidades[productos.indexOf(productoDeterminaVariante.id)];
+          const c = cantidadDeterminante * quantity;
+          console.log("Cantidad determinante", cantidadDeterminante);
+          console.log("Cantidad total", cantidadDeterminante * quantity);
+          const { id: idVariante, title: titleVariante } =
+            variantDeterminaVariante;
+          console.log(
+            `Variante determinante: ${titleVariante} - ${idVariante}`
+          );
+
+          const isBundleDeterminante = await isValidBundle(
+            productoDeterminaVariante.id
+          );
+
+          if (isBundleDeterminante) {
+            processBundlesPromises.push(() => {
+              console.log(
+                `Procesando bundle ${productoDeterminaVariante.title} con id ${productoDeterminaVariante.id}, la variante es ${idVariante}, su inventario es ${variantDeterminaVariante.inventory_quantity}, reduciendo ${c}`
+              );
+
+              return recursiveProductDiscount(
+                productoDeterminaVariante.id,
+                variantDeterminaVariante.id,
+                c
+              );
+            });
+          } else {
+            updateProductsPromises.push(() => {
+              console.log(
+                `Reduciendo inventario de ${productoDeterminaVariante.title}, variant ${variantDeterminaVariante.title}, con inventario actual ${variantDeterminaVariante.inventory_quantity}, reduciendo ${c}`
+              );
+              return reducirInventario(idVariante, c);
+            });
+          }
+
+          const productosFiltrados = productosBundle.filter(
+            (p) =>
+              p.id !== productoDeterminaVariante.id &&
+              p.variants[0].inventory_management === "shopify"
+          );
+
+          for (const p of productosFiltrados) {
+            const cantidad = cantidades[productos.indexOf(p.id)];
+            const c = cantidad * quantity;
+
+            const variant = p.variants[0];
+            const { inventory_quantity: inv, id: idVariant } = variant;
+            const isBundle = await isValidBundle(p.id);
+            if (isBundle) {
+              processBundlesPromises.push(() => {
+                console.log(
+                  `Procesando bundle ${p.title} con id ${p.id}, la variante es ${idVariant}, su inventario es ${inv}, reduciendo ${c}`
+                );
+                return recursiveProductDiscount(p.id, idVariant, c);
+              });
+            } else {
+              updateProductsPromises.push(() => {
+                console.log(
+                  `Reduciendo inventario de ${p.title}, con inventario actual ${p.variants[0].inventory_quantity}, reduciendo ${c}`
+                );
+                return reducirInventario(idVariant, c);
+              });
+            }
+          }
+        }
+      } else if (options.length === 2) {
+        const option1 = options[0];
+        const option2 = options[1];
+
+        const varOpt1 = variantRecibida.option1;
+        const varOpt2 = variantRecibida.option2;
+
+        console.log("Variante recibida", varOpt1, varOpt2);
+
+        const { name: nameOption1, values: valuesOption1 } = option1;
+        const { name: nameOption2, values: valuesOption2 } = option2;
+
+        console.log("Opción 1", nameOption1, " - ", valuesOption1);
+        console.log("Opción 2", nameOption2, " - ", valuesOption2);
+
+        // verificar si 1 producto determina la variante o si 2 productos determinan la variante
+        const productosPromises = productos.map((id) => {
+          return () => getProductById(id);
+        });
+
+        const productosBundle = await processPromisesBatch(productosPromises);
+
+        let productoDeterminaVariante = null;
+        let variantDeterminaVariante = null;
+
+        for (const p of productosBundle) {
+          const { title } = p;
+          if (nameOption1.includes(title) && nameOption2.includes(title)) {
+            const variantes = p.variants;
+            const variant = variantes.find(
+              (v) =>
+                v.title === variantRecibida.title &&
+                v.option1 === varOpt1 &&
+                v.option2 === varOpt2
+            );
+            if (variant) {
+              productoDeterminaVariante = p;
+              variantDeterminaVariante = variant;
+            }
+          }
+        }
+
+        if (productoDeterminaVariante) {
+          const cantidadDeterminante =
+            cantidades[productos.indexOf(productoDeterminaVariante.id)];
+          const c = cantidadDeterminante * quantity;
+
+          console.log("Cantidad determinante", cantidadDeterminante);
+          console.log("Cantidad total", cantidadDeterminante * quantity);
+
+          console.log(
+            `El producto ${productoDeterminaVariante.title} determina la variante ${titleVariant}`
+          );
+
+          const { id: idVariante, title: titleVariante } =
+            variantDeterminaVariante;
+
+          console.log(
+            `Variante determinante: ${titleVariante} - ${idVariante}`
+          );
+
+          const isBundleDeterminante = await isValidBundle(
+            productoDeterminaVariante.id
+          );
+
+          if (isBundleDeterminante) {
+            processBundlesPromises.push(() => {
+              console.log(
+                `Procesando bundle ${productoDeterminaVariante.title} con id ${productoDeterminaVariante.id}, la variante es ${idVariante}, su inventario es ${variantDeterminaVariante.inventory_quantity}, reduciendo ${c}`
+              );
+              return recursiveProductDiscount(
+                productoDeterminaVariante.id,
+                variantDeterminaVariante.id,
+                c
+              );
+            });
+          } else {
+            updateProductsPromises.push(() => {
+              console.log(
+                `Reduciendo inventario de ${productoDeterminaVariante.title}, variant ${variantDeterminaVariante.title}, con inventario actual ${variantDeterminaVariante.inventory_quantity}, reduciendo ${c}`
+              );
+              return reducirInventario(idVariante, c);
+            });
+          }
+
+          const productosFiltrados = productosBundle.filter(
+            (p) =>
+              p.id !== productoDeterminaVariante.id &&
+              p.variants[0].inventory_management === "shopify"
+          );
+
+          for (const p of productosFiltrados) {
+            const cantidad = cantidades[productos.indexOf(p.id)];
+            const c = cantidad * quantity;
+
+            const variant = p.variants[0];
+            const { inventory_quantity: inv, id: idVariant } = variant;
+            const isBundle = await isValidBundle(p.id);
+            if (isBundle) {
+              processBundlesPromises.push(() => {
+                console.log(
+                  `Procesando bundle ${p.title} con id ${p.id}, la variante es ${idVariant}, su inventario es ${inv}, reduciendo ${c}`
+                );
+                return recursiveProductDiscount(p.id, idVariant, c);
+              });
+            } else {
+              updateProductsPromises.push(() => {
+                console.log(
+                  `Reduciendo inventario de ${p.title}, con inventario actual ${p.variants[0].inventory_quantity}, reduciendo ${c}`
+                );
+                return reducirInventario(idVariant, c);
+              });
+            }
+          }
+        } else {
+          let producto1 = null;
+          let producto2 = null;
+
+          for (const p of productosBundle) {
+            if (nameOption1.includes(p.title)) {
+              producto1 = p;
+            }
+            if (nameOption2.includes(p.title)) {
+              producto2 = p;
+            }
+          }
+
+          if (producto1 && producto2) {
+            let v1 = producto1.variants.find(
+              (v) => v.option1 === varOpt1 && v.option2 === null
+            );
+
+            let v2 = producto2.variants.find(
+              (v) => v.option1 === varOpt2 && v.option2 === null
+            );
+
+            if (v1 && v2) {
+              const cantidad1 = cantidades[productos.indexOf(producto1.id)];
+              const cantidad2 = cantidades[productos.indexOf(producto2.id)];
+
+              let c1 = quantity;
+              let c2 = quantity;
+
+              const inv1 = v1.inventory_quantity;
+              const inv2 = v2.inventory_quantity;
+
+              const idVariant1 = v1.id;
+              const idVariant2 = v2.id;
+
+              const isBundle1 = await isValidBundle(producto1.id);
+              const isBundle2 = await isValidBundle(producto2.id);
+
+              if (isBundle1) {
+                processBundlesPromises.push(() => {
+                  console.log(
+                    `Procesando bundle ${producto1.title} con id ${producto1.id}, la variante es ${idVariant1}, su inventario es ${inv1}, reduciendo ${c1}`
+                  );
+                  return recursiveProductDiscount(producto1.id, idVariant1, c1);
+                });
+              } else {
+                updateProductsPromises.push(() => {
+                  console.log(
+                    `Reduciendo inventario de ${producto1.title}, con inventario actual ${v1.inventory_quantity}, reduciendo ${c1}`
+                  );
+                  return reducirInventario(idVariant1, c1);
+                });
+              }
+
+              if (isBundle2) {
+                processBundlesPromises.push(() => {
+                  console.log(
+                    `Procesando bundle ${producto2.title} con id ${producto2.id}, la variante es ${idVariant2}, su inventario es ${inv2}, reduciendo ${c2}`
+                  );
+                  return recursiveProductDiscount(producto2.id, idVariant2, c2);
+                });
+              } else {
+                updateProductsPromises.push(() => {
+                  console.log(
+                    `Reduciendo inventario de ${producto2.title}, con inventario actual ${v2.inventory_quantity}, reduciendo ${c2}`
+                  );
+                  return reducirInventario(idVariant2, c2);
+                });
+              }
+
+              const productosFiltrados = productosBundle.filter(
+                (p) =>
+                  p.id !== producto1.id &&
+                  p.id !== producto2.id &&
+                  p.variants[0].inventory_management === "shopify"
+              );
+
+              for (const p of productosFiltrados) {
+                const cantidad = cantidades[productos.indexOf(p.id)];
+                const c = cantidad * quantity;
+
+                const variant = p.variants[0];
+                const { inventory_quantity: inv, id: idVariant } = variant;
+                const isBundle = await isValidBundle(p.id);
+                if (isBundle) {
+                  processBundlesPromises.push(() => {
+                    console.log(
+                      `Procesando bundle ${p.title} con id ${p.id}, la variante es ${idVariant}, su inventario es ${inv}, reduciendo ${c}`
+                    );
+                    return recursiveProductDiscount(p.id, idVariant, c);
+                  });
+                } else {
+                  updateProductsPromises.push(() => {
+                    console.log(
+                      `Reduciendo inventario de ${p.title}, con inventario actual ${p.variants[0].inventory_quantity}, reduciendo ${c}`
+                    );
+                    return reducirInventario(idVariant, c);
+                  });
+                }
+              }
+            }
+          }
+        }
+      } else if (options.length === 3) {
+        // 3 opciones
+        const option1 = options[0];
+        const option2 = options[1];
+        const option3 = options[2];
+
+        const varOpt1 = variantRecibida.option1;
+        const varOpt2 = variantRecibida.option2;
+        const varOpt3 = variantRecibida.option3;
+
+        console.log("Variante recibida", varOpt1, varOpt2, varOpt3);
+
+        const { name: nameOption1, values: valuesOption1 } = option1;
+        const { name: nameOption2, values: valuesOption2 } = option2;
+        const { name: nameOption3, values: valuesOption3 } = option3;
+
+        console.log("Opción 1", nameOption1, " - ", valuesOption1);
+        console.log("Opción 2", nameOption2, " - ", valuesOption2);
+        console.log("Opción 3", nameOption3, " - ", valuesOption3);
+
+        // verificar si 1 producto determina la variante o si 2 productos determinan la variante o si 3 productos determinan la variante
+        const productosPromises = productos.map((id) => {
+          return () => getProductById(id);
+        });
+
+        const productosBundle = await processPromisesBatch(productosPromises);
+
+        let productoDeterminaVariante = null;
+        let varianteDeterminaVariante = null;
+
+        for (const p of productosBundle) {
+          const { title } = p;
+          if (
+            nameOption1.includes(title) &&
+            nameOption2.includes(title) &&
+            nameOption3.includes(title)
+          ) {
+            const variantes = p.variants;
+            const variant = variantes.find(
+              (v) =>
+                v.title === variantRecibida.title &&
+                v.option1 === varOpt1 &&
+                v.option2 === varOpt2 &&
+                v.option3 === varOpt3
+            );
+            if (variant) {
+              productoDeterminaVariante = p;
+              varianteDeterminaVariante = variant;
+            }
+          }
+        }
+
+        if (productoDeterminaVariante && varianteDeterminaVariante) {
+          const cantidadDeterminante =
+            cantidades[productos.indexOf(productoDeterminaVariante.id)];
+          const c = quantity;
+
+          console.log("Cantidad determinante", cantidadDeterminante);
+          console.log("Cantidad total", cantidadDeterminante * quantity);
+
+          console.log(
+            `El producto ${productoDeterminaVariante.title} determina la variante ${titleVariant}`
+          );
+
+          const { id: idVariante, title: titleVariante } =
+            varianteDeterminaVariante;
+
+          console.log(
+            `Variante determinante: ${titleVariante} - ${idVariante}`
+          );
+
+          const isBundleDeterminante = await isValidBundle(
+            productoDeterminaVariante.id
+          );
+
+          if (isBundleDeterminante) {
+            processBundlesPromises.push(() => {
+              console.log(
+                `Procesando bundle ${productoDeterminaVariante.title} con id ${productoDeterminaVariante.id}, la variante es ${idVariante}, su inventario es ${varianteDeterminaVariante.inventory_quantity}, reduciendo ${c}`
+              );
+              return recursiveProductDiscount(
+                productoDeterminaVariante.id,
+                varianteDeterminaVariante.id,
+                c
+              );
+            });
+          } else {
+            updateProductsPromises.push(() => {
+              console.log(
+                `Reduciendo inventario de ${productoDeterminaVariante.title}, variant ${varianteDeterminaVariante.title}, con inventario actual ${varianteDeterminaVariante.inventory_quantity}, reduciendo ${c}`
+              );
+              return reducirInventario(idVariante, c);
+            });
+          }
+
+          const productosFiltrados = productosBundle.filter(
+            (p) =>
+              p.id !== productoDeterminaVariante.id &&
+              p.variants[0].inventory_management === "shopify"
+          );
+
+          for (const p of productosFiltrados) {
+            const cantidad = cantidades[productos.indexOf(p.id)];
+            const c = cantidad * quantity;
+
+            const variant = p.variants[0];
+            const { inventory_quantity: inv, id: idVariant } = variant;
+            const isBundle = await isValidBundle(p.id);
+            if (isBundle) {
+              processBundlesPromises.push(() => {
+                console.log(
+                  `Procesando bundle ${p.title} con id ${p.id}, la variante es ${idVariant}, su inventario es ${inv}, reduciendo ${c}`
+                );
+                return recursiveProductDiscount(p.id, idVariant, c);
+              });
+            } else {
+              updateProductsPromises.push(() => {
+                console.log(
+                  `Reduciendo inventario de ${p.title}, con inventario actual ${p.variants[0].inventory_quantity}, reduciendo ${c}`
+                );
+                return reducirInventario(idVariant, c);
+              });
+            }
+          }
+        } else {
+          let producto1 = null;
+          let producto2 = null;
+          let variant1 = null;
+          let variant2 = null;
+
+          for (const p of productosBundle) {
+            if (
+              (nameOption1.includes(p.title) &&
+                nameOption2.includes(p.title) &&
+                !nameOption3.includes(p.title)) ||
+              (nameOption1.includes(p.title) &&
+                !nameOption2.includes(p.title) &&
+                nameOption3.includes(p.title)) ||
+              (!nameOption1.includes(p.title) &&
+                nameOption2.includes(p.title) &&
+                nameOption3.includes(p.title))
+            ) {
+              producto1 = p;
+              variant1 = p.variants.find(
+                (v) =>
+                  (v.option1 === varOpt1 &&
+                    v.option2 === varOpt2 &&
+                    v.option3 === null) ||
+                  (v.option1 === varOpt1 &&
+                    v.option2 === varOpt3 &&
+                    v.option3 === null) ||
+                  (v.option1 === varOpt2 &&
+                    v.option2 === varOpt3 &&
+                    v.option3 === null)
+              );
+            }
+            if (
+              (nameOption1.includes(p.title) &&
+                !nameOption2.includes(p.title) &&
+                !nameOption3.includes(p.title)) ||
+              (!nameOption1.includes(p.title) &&
+                nameOption2.includes(p.title) &&
+                !nameOption3.includes(p.title)) ||
+              (!nameOption1.includes(p.title) &&
+                !nameOption2.includes(p.title) &&
+                nameOption3.includes(p.title))
+            ) {
+              producto2 = p;
+              variant2 = p.variants.find(
+                (v) =>
+                  (v.option1 === varOpt1 && v.option2 === null) ||
+                  (v.option1 === varOpt2 && v.option2 === null) ||
+                  (v.option1 === varOpt3 && v.option2 === null)
+              );
+            }
+          }
+
+          if (producto1 && producto2 && variant1 && variant2) {
+            console.log(
+              `El producto ${producto1.title} y ${producto2.title} determinan la variante ${titleVariant}`
+            );
+
+            console.log("Variante 1", variant1.title);
+            console.log("Variante 2", variant2.title);
+
+            const cantidad1 = cantidades[productos.indexOf(producto1.id)];
+            const cantidad2 = cantidades[productos.indexOf(producto2.id)];
+
+            const c1 = quantity;
+            const c2 = quantity;
+
+            const inv1 = variant1.inventory_quantity;
+            const inv2 = variant2.inventory_quantity;
+
+            const idVariant1 = variant1.id;
+            const idVariant2 = variant2.id;
+
+            const isBundle1 = await isValidBundle(producto1.id);
+            const isBundle2 = await isValidBundle(producto2.id);
+
+            if (isBundle1) {
+              processBundlesPromises.push(() => {
+                console.log(
+                  `Procesando bundle ${producto1.title} con id ${producto1.id}, la variante es ${idVariant1}, su inventario es ${inv1}, reduciendo ${c1}`
+                );
+                return recursiveProductDiscount(producto1.id, idVariant1, c1);
+              });
+            } else {
+              updateProductsPromises.push(() => {
+                console.log(
+                  `Reduciendo inventario de ${producto1.title}, con inventario actual ${variant1.inventory_quantity}, reduciendo ${c1}`
+                );
+                return reducirInventario(idVariant1, c1);
+              });
+            }
+
+            if (isBundle2) {
+              processBundlesPromises.push(() => {
+                console.log(
+                  `Procesando bundle ${producto2.title} con id ${producto2.id}, la variante es ${idVariant2}, su inventario es ${inv2}, reduciendo ${c2}`
+                );
+                return recursiveProductDiscount(producto2.id, idVariant2, c2);
+              });
+            } else {
+              updateProductsPromises.push(() => {
+                console.log(
+                  `Reduciendo inventario de ${producto2.title}, con inventario actual ${variant2.inventory_quantity}, reduciendo ${c2}`
+                );
+                return reducirInventario(idVariant2, c2);
+              });
+            }
+
+            const productosFiltrados = productosBundle.filter(
+              (p) =>
+                p.id !== producto1.id &&
+                p.id !== producto2.id &&
+                p.variants[0].inventory_management === "shopify"
+            );
+
+            for (const p of productosFiltrados) {
+              const cantidad = cantidades[productos.indexOf(p.id)];
+              const c = cantidad * quantity;
+
+              const variant = p.variants[0];
+              const { inventory_quantity: inv, id: idVariant } = variant;
+              const isBundle = await isValidBundle(p.id);
+              if (isBundle) {
+                processBundlesPromises.push(() => {
+                  console.log(
+                    `Procesando bundle ${p.title} con id ${p.id}, la variante es ${idVariant}, su inventario es ${inv}, reduciendo ${c}`
+                  );
+                  return recursiveProductDiscount(p.id, idVariant, c);
+                });
+              } else {
+                updateProductsPromises.push(() => {
+                  console.log(
+                    `Reduciendo inventario de ${p.title}, con inventario actual ${p.variants[0].inventory_quantity}, reduciendo ${c}`
+                  );
+                  return reducirInventario(idVariant, c);
+                });
+              }
+            }
+          } else {
+            // 3 productos determinan la variante
+            let producto1 = null;
+            let producto2 = null;
+            let producto3 = null;
+            let variant1 = null;
+            let variant2 = null;
+            let variant3 = null;
+
+            for (const p of productosBundle) {
+              if (nameOption1.includes(p.title)) {
+                producto1 = p;
+                variant1 = p.variants.find(
+                  (v) =>
+                    v.option1 === varOpt1 &&
+                    v.option2 === null &&
+                    v.option3 === null
+                );
+              }
+              if (nameOption2.includes(p.title)) {
+                producto2 = p;
+                variant2 = p.variants.find(
+                  (v) =>
+                    v.option1 === varOpt2 &&
+                    v.option2 === null &&
+                    v.option3 === null
+                );
+              }
+              if (nameOption3.includes(p.title)) {
+                producto3 = p;
+                variant3 = p.variants.find(
+                  (v) =>
+                    v.option1 === varOpt3 &&
+                    v.option2 === null &&
+                    v.option3 === null
+                );
+              }
+            }
+
+            if (
+              producto1 &&
+              producto2 &&
+              producto3 &&
+              variant1 &&
+              variant2 &&
+              variant3
+            ) {
+              const cantidad1 = cantidades[productos.indexOf(producto1.id)];
+              const cantidad2 = cantidades[productos.indexOf(producto2.id)];
+              const cantidad3 = cantidades[productos.indexOf(producto3.id)];
+
+              const c1 = quantity;
+              const c2 = quantity;
+              const c3 = quantity;
+
+              const inv1 = variant1.inventory_quantity;
+              const inv2 = variant2.inventory_quantity;
+              const inv3 = variant3.inventory_quantity;
+
+              const idVariant1 = variant1.id;
+              const idVariant2 = variant2.id;
+              const idVariant3 = variant3.id;
+
+              const isBundle1 = await isValidBundle(producto1.id);
+              const isBundle2 = await isValidBundle(producto2.id);
+              const isBundle3 = await isValidBundle(producto3.id);
+
+              if (isBundle1) {
+                processBundlesPromises.push(() => {
+                  console.log(
+                    `Procesando bundle ${producto1.title} con id ${producto1.id}, la variante es ${idVariant1}, su inventario es ${inv1}, reduciendo ${c1}`
+                  );
+                  return recursiveProductDiscount(producto1.id, idVariant1, c1);
+                });
+              } else {
+                updateProductsPromises.push(() => {
+                  console.log(
+                    `Reduciendo inventario de ${producto1.title}, con inventario actual ${variant1.inventory_quantity}, reduciendo ${c1}`
+                  );
+                  return reducirInventario(idVariant1, c1);
+                });
+              }
+
+              if (isBundle2) {
+                processBundlesPromises.push(() => {
+                  console.log(
+                    `Procesando bundle ${producto2.title} con id ${producto2.id}, la variante es ${idVariant2}, su inventario es ${inv2}, reduciendo ${c2}`
+                  );
+                  return recursiveProductDiscount(producto2.id, idVariant2, c2);
+                });
+              } else {
+                updateProductsPromises.push(() => {
+                  console.log(
+                    `Reduciendo inventario de ${producto2.title}, con inventario actual ${variant2.inventory_quantity}, reduciendo ${c2}`
+                  );
+                  return reducirInventario(idVariant2, c2);
+                });
+              }
+
+              if (isBundle3) {
+                processBundlesPromises.push(() => {
+                  console.log(
+                    `Procesando bundle ${producto3.title} con id ${producto3.id}, la variante es ${idVariant3}, su inventario es ${inv3}, reduciendo ${c3}`
+                  );
+                  return recursiveProductDiscount(producto3.id, idVariant3, c3);
+                });
+              } else {
+                updateProductsPromises.push(() => {
+                  console.log(
+                    `Reduciendo inventario de ${producto3.title}, con inventario actual ${variant3.inventory_quantity}, reduciendo ${c3}`
+                  );
+                  return reducirInventario(idVariant3, c3);
+                });
+              }
+
+              const productosFiltrados = productosBundle.filter(
+                (p) =>
+                  p.id !== producto1.id &&
+                  p.id !== producto2.id &&
+                  p.id !== producto3.id &&
+                  p.variants[0].inventory_management === "shopify"
+              );
+
+              for (const p of productosFiltrados) {
+                const cantidad = cantidades[productos.indexOf(p.id)];
+                const c = cantidad * quantity;
+
+                const variant = p.variants[0];
+                const { inventory_quantity: inv, id: idVariant } = variant;
+                const isBundle = await isValidBundle(p.id);
+                if (isBundle) {
+                  processBundlesPromises.push(() => {
+                    console.log(
+                      `Procesando bundle ${p.title} con id ${p.id}, la variante es ${idVariant}, su inventario es ${inv}, reduciendo ${c}`
+                    );
+                    return recursiveProductDiscount(p.id, idVariant, c);
+                  });
+                } else {
+                  updateProductsPromises.push(() => {
+                    console.log(
+                      `Reduciendo inventario de ${p.title}, con inventario actual ${p.variants[0].inventory_quantity}, reduciendo ${c}`
+                    );
+                    return reducirInventario(idVariant, c);
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    console.log("-".repeat(50));
+  } else {
+    console.log(
+      `El producto ${productData.title} no es un bundle, por lo tanto no se procesará`
+    );
+  }
+
+  if (updateProductsPromises.length !== 0) {
+    console.log(
+      "Procesando promesas de productos del producto",
+      productData.title
+    );
+
+    await processPromisesBatch(updateProductsPromises);
+  }
+
+  if (processBundlesPromises.length !== 0) {
+    console.log(
+      "Procesando promesas de bundles del producto",
+      productData.title
+    );
+    await processPromisesBatch(processBundlesPromises);
+  }
+}
+
+async function handleOrderCreate(orderData) {
+  try {
+    const { line_items } = orderData;
+
+    for (const lineItem of line_items) {
+      const { product_id, variant_id, quantity, title } = lineItem;
+      await recursiveProductDiscount(product_id, variant_id, quantity);
+    }
+  } catch (error) {
+    console.error("Error procesando la orden:", error);
+  }
+}
 
 module.exports = {
   getProductDBById,
@@ -1350,4 +2223,6 @@ module.exports = {
   reducirInventario,
   aumentarInventario,
   handleOrderCreate,
+  recursiveProductDiscount,
+  processProduct,
 };

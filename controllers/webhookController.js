@@ -30,11 +30,14 @@ async function processQueue() {
 
   processing = true;
 
-  const { req, res } = queue.shift();
+  const { req, res, type } = queue.shift();
 
   try {
-    // Procesa la petición aquí, llamando a handleProductUpdate
-    await handleProductUpdate(req, res);
+    if (type === "product") {
+      await handleProductUpdate(req, res);
+    } else if (type === "order") {
+      await handleOrderCreate(req, res);
+    }
   } catch (error) {
     console.error("Error processing webhook:", error);
     res.status(500).send("Internal Server Error");
@@ -44,7 +47,7 @@ async function processQueue() {
   processQueue(); // Procesa la siguiente petición en la cola
 }
 
-// Endpoint para recibir el webhook
+// Función para manejar las peticiones de actualización de productos
 async function handleProductUpdate(req, res) {
   try {
     const productData = JSON.parse(req.body);
@@ -99,16 +102,12 @@ async function handleProductUpdate(req, res) {
   }
 }
 
-async function handleProductUpdateRequest(req, res) {
-  queue.push({ req, res });
-  processQueue();
-}
-
+// Función para manejar las peticiones de creación de órdenes
 async function handleOrderCreate(req, res) {
   try {
     const orderData = JSON.parse(req.body);
 
-    console.log(JSON.stringify(orderData, null, 2));
+    // console.log(JSON.stringify(orderData, null, 2));
 
     await shopifyService.handleOrderCreate(orderData);
 
@@ -119,8 +118,23 @@ async function handleOrderCreate(req, res) {
   }
 }
 
+// Función para agregar peticiones a la cola
+async function addToQueue(req, res, type) {
+  queue.push({ req, res, type });
+  processQueue();
+}
+
+// Controladores para los endpoints
+async function handleProductUpdateRequest(req, res) {
+  addToQueue(req, res, "product");
+}
+
+async function handleOrderCreateRequest(req, res) {
+  addToQueue(req, res, "order");
+}
+
 module.exports = {
   verifyHMAC,
   handleProductUpdateRequest,
-  handleOrderCreate,
+  handleOrderCreateRequest,
 };

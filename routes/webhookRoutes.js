@@ -2,7 +2,7 @@ const express = require("express");
 const {
   verifyHMAC,
   handleProductUpdateRequest,
-  handleOrderCreate,
+  handleOrderCreateRequest,
 } = require("../controllers/webhookController");
 
 const router = express.Router();
@@ -11,5 +11,6 @@ const router = express.Router();
 router.post("/products/update", verifyHMAC, handleProductUpdateRequest);
 
 // Ruta para el webhook de creación de órdenes
-router.post("/orders/create", verifyHMAC, handleOrderCreate);
+router.post("/orders/create", verifyHMAC, handleOrderCreateRequest);
+
 module.exports = router;
