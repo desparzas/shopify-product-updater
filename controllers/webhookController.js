@@ -3,7 +3,6 @@ const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
 const { globosNumerados, globosLatex } = require("../utils/products");
 const { extractNumber } = require("../utils/functions");
-const processedProducts = new Set();
 
 let processing = false;
 const queue = [];
@@ -58,25 +57,6 @@ async function handleProductUpdate(req, res) {
       "-",
       productData.title
     );
-
-    if (processedProducts.has(productData.id)) {
-      console.log(
-        "Producto",
-        productData.id,
-        "-",
-        productData.title,
-        "ya procesado recientemente."
-      );
-      return res
-        .status(200)
-        .send(
-          `Producto ${productData.id} - ${productData.title} ya procesado recientemente.`
-        );
-    }
-
-    // Marca el producto como procesado
-    processedProducts.add(productData.id);
-    setTimeout(() => processedProducts.delete(productData.id), 300000);
 
     // Enviar respuesta inmediatamente
     res

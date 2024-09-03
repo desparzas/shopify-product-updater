@@ -1345,8 +1345,12 @@ async function getVariant(variantId) {
 }
 
 async function recursiveProductDiscount(product_id, variant_id, quantity) {
-  const isBundle = await isValidBundle(product_id);
   const productData = await getProductById(product_id);
+  if (!productData) {
+    console.log("No se encontró el producto con id", product_id);
+    return;
+  }
+  const isBundle = await isValidBundle(product_id);
   const variantRecibida = productData.variants.find((v) => v.id === variant_id);
   const updateProductsPromises = [];
   const processBundlesPromises = [];
