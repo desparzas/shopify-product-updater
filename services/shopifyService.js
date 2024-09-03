@@ -13,7 +13,7 @@ const shopify = new Shopify({
 const productCache = new Map();
 const bundlesCache = new Map();
 
-async function retryWithBackoff(fn, retries = 10, delay = 1000) {
+async function retryWithBackoff(fn, retries = 15, delay = 2000) {
   try {
     return await fn();
   } catch (error) {
@@ -940,7 +940,7 @@ function makeTitlesUnique(arr) {
   });
 }
 
-async function processPromisesBatch(promises, batchSize = 10) {
+async function processPromisesBatch(promises, batchSize = 5) {
   const results = [];
   for (let i = 0; i < promises.length; i += batchSize) {
     const batch = promises.slice(i, i + batchSize);
