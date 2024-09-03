@@ -1082,10 +1082,10 @@ async function handleProductUp(pId) {
             if (variant.inventory_management === "shopify") {
               if (inventory_quantity !== actual_inventory) {
                 updateInventoryPromises.push(async () => {
-                  console.log(
-                    "Actualizando inventario del producto",
-                    variant.id
-                  );
+                  // console.log(
+                  //   "Actualizando inventario del producto",
+                  //   variant.id
+                  // );
                   await setInventoryLevel(variant.id, inventory_quantity);
                 });
               }
