@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
 const { globosNumerados, globosLatex } = require("../utils/products");
 const { extractNumber } = require("../utils/functions");
-const processedProducts = new Set();
+// const processedProducts = new Set();
 let orderProcessingFlag = false;
 let processing = false;
 const queue = [];
@@ -60,20 +60,20 @@ async function handleProductUpdate(req, res) {
     );
 
     // Si el producto ya ha sido procesado recientemente, ignorar
-    if (processedProducts.has(productData.id)) {
-      console.log(
-        "Producto",
-        productData.id,
-        "-",
-        productData.title,
-        "ya procesado recientemente."
-      );
-      return res
-        .status(200)
-        .send(
-          `Producto ${productData.id} - ${productData.title} ya procesado recientemente.`
-        );
-    }
+    // if (processedProducts.has(productData.id)) {
+    //   console.log(
+    //     "Producto",
+    //     productData.id,
+    //     "-",
+    //     productData.title,
+    //     "ya procesado recientemente."
+    //   );
+    //   return res
+    //     .status(200)
+    //     .send(
+    //       `Producto ${productData.id} - ${productData.title} ya procesado recientemente.`
+    //     );
+    // }
 
     // Si se está procesando una orden, no procesar la actualización del producto
     if (orderProcessingFlag) {
@@ -88,8 +88,8 @@ async function handleProductUpdate(req, res) {
     }
 
     // Marca el producto como procesado
-    processedProducts.add(productData.id);
-    setTimeout(() => processedProducts.delete(productData.id), 120000);
+    // processedProducts.add(productData.id);
+    // setTimeout(() => processedProducts.delete(productData.id), 120000);
 
     // Respuesta inmediata
     res
