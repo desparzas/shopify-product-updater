@@ -80,7 +80,7 @@ async function handleProductUpdate(req, res) {
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 300000);
 
-    await shopifyService.handleProductUp(productData.id);
+    shopifyService.handleProductUp(productData.id);
 
     console.log(
       "Webhook procesado para el producto",
@@ -109,7 +109,7 @@ async function handleOrderCreate(req, res) {
 
     // console.log(JSON.stringify(orderData, null, 2));
 
-    await shopifyService.handleOrderCreate(orderData);
+    shopifyService.handleOrderCreate(orderData);
 
     return res.status(200).send("Webhook recibido");
   } catch (error) {
