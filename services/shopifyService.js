@@ -258,8 +258,8 @@ async function updateBundle(productId) {
       const cantidad = cantidades[i];
       const { options, variants, title, id } = product;
 
-      const variantesProducto = variants.length ** cantidad;
-      const opcionesProducto = options.length * cantidad;
+      const variantesProducto = variants.length ** Math.abs(cantidad);
+      const opcionesProducto = options.length * Math.abs(cantidad);
 
       if (!isSimpleProduct(product)) {
         optionsCount += opcionesProducto;
@@ -1301,9 +1301,9 @@ async function setInventoryLevel(variantId, quantity) {
     }
     const inventoryItemId = variant.inventory_item_id;
 
-    console.log(inventoryItemId);
+    // console.log(inventoryItemId);
     const inventoryLevels = await getInventoryLevels(inventoryItemId);
-    console.log(inventoryLevels);
+    // console.log(inventoryLevels);
 
     const index = inventoryLevels.findIndex(
       (inventoryLevel) => inventoryLevel.available > 0
