@@ -13,7 +13,7 @@ const shopify = new Shopify({
 const productCache = new Map();
 const bundlesCache = new Map();
 
-async function retryWithBackoff(fn, retries = 15, delay = 2000) {
+async function retryWithBackoff(fn, retries = 15, delay = 1000) {
   try {
     return await fn();
   } catch (error) {
@@ -485,14 +485,14 @@ async function updateBundle(productId) {
             const cantidad2 = cantidades[productosBundle.indexOf(producto2)];
 
             if (inventoryManagement1 === "shopify") {
-              if (inventario1 / cantidad1 < minVar) {
-                minVar = Math.floor(inventario1 / cantidad1);
+              if (inventario1 < minVar) {
+                minVar = Math.floor(inventario1);
               }
             }
 
             if (inventoryManagement2 === "shopify") {
-              if (inventario2 / cantidad2 < minVar) {
-                minVar = Math.floor(inventario2 / cantidad2);
+              if (inventario2 < minVar) {
+                minVar = Math.floor(inventario2);
               }
             }
           }
@@ -712,14 +712,14 @@ async function updateBundle(productId) {
                 const inventoryManagement2 = var2.inventory_management;
 
                 if (inventoryManagement1 === "shopify") {
-                  if (inventario1 / cantidad1 < minVar) {
-                    minVar = Math.floor(inventario1 / cantidad1);
+                  if (inventario1 < minVar) {
+                    minVar = Math.floor(inventario1);
                   }
                 }
 
                 if (inventoryManagement2 === "shopify") {
-                  if (inventario2 / cantidad2 < minVar) {
-                    minVar = Math.floor(inventario2 / cantidad2);
+                  if (inventario2 < minVar) {
+                    minVar = Math.floor(inventario2);
                   }
                 }
               } else {
@@ -784,20 +784,20 @@ async function updateBundle(productId) {
                   const cantidad3 = cantidades[productosBundle.indexOf(p3)];
 
                   if (inventoryManagement1 === "shopify") {
-                    if (inventario1 / cantidad1 < minVar) {
-                      minVar = Math.floor(inventario1 / cantidad1);
+                    if (inventario1 < minVar) {
+                      minVar = Math.floor(inventario1);
                     }
                   }
 
                   if (inventoryManagement2 === "shopify") {
-                    if (inventario2 / cantidad2 < minVar) {
-                      minVar = Math.floor(inventario2 / cantidad2);
+                    if (inventario2 < minVar) {
+                      minVar = Math.floor(inventario2);
                     }
                   }
 
                   if (inventoryManagement3 === "shopify") {
-                    if (inventario3 / cantidad3 < minVar) {
-                      minVar = Math.floor(inventario3 / cantidad3);
+                    if (inventario3 < minVar) {
+                      minVar = Math.floor(inventario3);
                     }
                   }
                 }
@@ -940,7 +940,7 @@ function makeTitlesUnique(arr) {
   });
 }
 
-async function processPromisesBatch(promises, batchSize = 5) {
+async function processPromisesBatch(promises, batchSize = 8) {
   const results = [];
   for (let i = 0; i < promises.length; i += batchSize) {
     const batch = promises.slice(i, i + batchSize);
@@ -1169,7 +1169,7 @@ async function listProducts() {
   let allProducts = [];
   let params = {
     limit: 250,
-    fields: ["id", "title", "product_type", "variants", "options"],
+    // fields: ["id", "title", "product_type", "variants", "options"],
     order: "id asc",
   };
 
@@ -1301,7 +1301,9 @@ async function setInventoryLevel(variantId, quantity) {
     }
     const inventoryItemId = variant.inventory_item_id;
 
+    console.log(inventoryItemId);
     const inventoryLevels = await getInventoryLevels(inventoryItemId);
+    console.log(inventoryLevels);
 
     const index = inventoryLevels.findIndex(
       (inventoryLevel) => inventoryLevel.available > 0
