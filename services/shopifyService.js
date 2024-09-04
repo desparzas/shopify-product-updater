@@ -1095,6 +1095,7 @@ async function handleProductUp(pId) {
           if (updateInventoryPromises.length !== 0) {
             console.log("Actualizando inventarios del bundle", bundleId);
             await processPromisesBatch(updateInventoryPromises);
+            console.log("Inventarios del bundle", bundleId, "actualizados");
           }
         }
       }
