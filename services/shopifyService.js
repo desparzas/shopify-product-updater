@@ -955,6 +955,7 @@ async function processPromisesBatch(promises, batchSize = 8) {
 
 async function handleProductUp(pId) {
   try {
+    console.log("Hola desde dentro de handleProductUp");
     const id = pId;
     const bundleId = id;
     await processProduct(pId);
