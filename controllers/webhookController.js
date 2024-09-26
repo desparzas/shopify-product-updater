@@ -8,6 +8,31 @@ let orderProcessingFlag = false;
 let processing = false;
 const queue = [];
 
+const Queue = require("bull");
+
+// Crear una cola llamada "productUpdateQueue"
+const productUpdateQueue = new Queue("productUpdateQueue");
+// Procesar hasta 5 trabajos simultáneamente
+productUpdateQueue.process(5, async (job) => {
+  const { productId, title } = job.data;
+
+  try {
+    console.log(
+      `Procesando producto en segundo plano: ${productId} - ${title}`
+    );
+    await shopifyService.handleProductUp(productId);
+    console.log(
+      `Webhook procesado con éxito para el producto ${productId} - ${title}`
+    );
+  } catch (error) {
+    console.error(
+      `Error al procesar webhook para el producto ${productId} - ${title}:`,
+      error
+    );
+    throw error; // Esto hará que el trabajo falle y se pueda reintentar si lo configuras
+  }
+});
+
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
   const hmac = req.headers["x-shopify-hmac-sha256"];
@@ -98,20 +123,11 @@ async function handleProductUpdate(req, res) {
         `Webhook recibido y procesado para el producto ${productData.id} - ${productData.title}`
       );
 
-    // Procesar el producto en segundo plano
-    shopifyService
-      .handleProductUp(productData.id)
-      .then(() => {
-        console.log(
-          `Webhook procesado con éxito para el producto ${productData.id} - ${productData.title}`
-        );
-      })
-      .catch((error) => {
-        console.error(
-          `Error al procesar webhook para el producto ${productData.id} - ${productData.title}:`,
-          error
-        );
-      });
+    // Encolar el procesamiento del producto
+    productUpdateQueue.add(
+      { productId: productData.id, title: productData.title },
+      { attempts: 3, backoff: 5000 } // Reintentar 3 veces con un intervalo de 5 segundos
+    );
   } catch (error) {
     console.error("Error handling product update webhook:", error);
     res.status(500).send("Internal Server Error");
