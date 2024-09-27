@@ -2233,5 +2233,4 @@ module.exports = {
   handleOrderCreate,
   recursiveProductDiscount,
   processProduct,
-  getProductById,
 };
