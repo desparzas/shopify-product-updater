@@ -91,14 +91,12 @@ async function handleProductUpdate(req, res) {
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 10000);
 
-    // Respuesta inmediata
     res
       .status(200)
       .send(
         `Webhook recibido y procesado para el producto ${productData.id} - ${productData.title}`
       );
 
-    // Procesar el producto en segundo plano
     shopifyService
       .handleProductUp(productData.id)
       .then(() => {
@@ -123,13 +121,10 @@ async function handleOrderCreate(req, res) {
   try {
     const orderData = JSON.parse(req.body);
 
-    // Establecer el flag para indicar que se está procesando una orden
     orderProcessingFlag = true;
 
-    // Respuesta inmediata
     res.status(200).send("Webhook recibido");
 
-    // Procesar la orden en segundo plano
     shopifyService
       .handleOrderCreate(orderData)
       .then(() => {
@@ -139,7 +134,6 @@ async function handleOrderCreate(req, res) {
         console.error("Error al procesar pedido:", orderData.id, error);
       })
       .finally(() => {
-        // Desactivar el flag una vez que se haya procesado la orden
         orderProcessingFlag = false;
       });
   } catch (error) {
