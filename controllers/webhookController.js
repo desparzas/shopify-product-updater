@@ -6,10 +6,7 @@ const { extractNumber } = require("../utils/functions");
 const processedProducts = new Set();
 let orderProcessingFlag = false;
 let processing = false;
-let productProcessingFlag = false; // Flag para la nueva cola
 const queue = [];
-const productQueue = []; // Nueva cola para manejar las actualizaciones de productos
-const BATCH_SIZE = 5; // Define el tamaño del lote
 
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
@@ -48,33 +45,6 @@ async function processQueue() {
 
   processing = false;
   processQueue(); // Procesa la siguiente petición en la cola
-}
-
-async function processProductQueue() {
-  if (productProcessingFlag || productQueue.length === 0) {
-    return;
-  }
-
-  productProcessingFlag = true;
-
-  // Tomar un lote de productos de la cola
-  const productIds = productQueue.splice(0, BATCH_SIZE);
-
-  try {
-    await Promise.all(
-      productIds.map(async ({ productId }) => {
-        await shopifyService.handleProductUp(productId);
-        console.log(
-          `Webhook procesado con éxito para el producto ${productId}`
-        );
-      })
-    );
-  } catch (error) {
-    console.error(`Error al procesar webhook para los productos:`, error);
-  }
-
-  productProcessingFlag = false;
-  processProductQueue(); // Procesa la siguiente petición en la cola de productos
 }
 
 // Función para manejar las peticiones de actualización de productos
@@ -121,16 +91,25 @@ async function handleProductUpdate(req, res) {
     processedProducts.add(productData.id);
     setTimeout(() => processedProducts.delete(productData.id), 10000);
 
-    // Respuesta inmediata
     res
       .status(200)
       .send(
         `Webhook recibido y procesado para el producto ${productData.id} - ${productData.title}`
       );
 
-    // Agregar el ID del producto a la nueva cola para su procesamiento
-    productQueue.push({ productId: productData.id });
-    processProductQueue(); // Inicia el procesamiento de la cola de productos
+    shopifyService
+      .handleProductUp(productData.id)
+      .then(() => {
+        console.log(
+          `Webhook procesado con éxito para el producto ${productData.id} - ${productData.title}`
+        );
+      })
+      .catch((error) => {
+        console.error(
+          `Error al procesar webhook para el producto ${productData.id} - ${productData.title}:`,
+          error
+        );
+      });
   } catch (error) {
     console.error("Error handling product update webhook:", error);
     res.status(500).send("Internal Server Error");
@@ -142,13 +121,10 @@ async function handleOrderCreate(req, res) {
   try {
     const orderData = JSON.parse(req.body);
 
-    // Establecer el flag para indicar que se está procesando una orden
     orderProcessingFlag = true;
 
-    // Respuesta inmediata
     res.status(200).send("Webhook recibido");
 
-    // Procesar la orden en segundo plano
     shopifyService
       .handleOrderCreate(orderData)
       .then(() => {
@@ -158,7 +134,6 @@ async function handleOrderCreate(req, res) {
         console.error("Error al procesar pedido:", orderData.id, error);
       })
       .finally(() => {
-        // Desactivar el flag una vez que se haya procesado la orden
         orderProcessingFlag = false;
       });
   } catch (error) {
@@ -168,7 +143,6 @@ async function handleOrderCreate(req, res) {
     }
   }
 }
-
 // Función para agregar peticiones a la cola
 async function addToQueue(req, res, type) {
   queue.push({ req, res, type });

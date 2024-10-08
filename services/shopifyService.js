@@ -955,7 +955,6 @@ async function processPromisesBatch(promises, batchSize = 8) {
 
 async function handleProductUp(pId) {
   try {
-    console.log("Hola desde dentro de handleProductUp");
     const id = pId;
     const bundleId = id;
     await processProduct(pId);
@@ -1096,6 +1095,7 @@ async function handleProductUp(pId) {
           if (updateInventoryPromises.length !== 0) {
             console.log("Actualizando inventarios del bundle", bundleId);
             await processPromisesBatch(updateInventoryPromises);
+            console.log("Inventarios del bundle", bundleId, "actualizados");
           }
         }
       }
