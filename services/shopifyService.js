@@ -12,6 +12,8 @@ const shopify = new Shopify({
 
 const productCache = new Map();
 const bundlesCache = new Map();
+// Set para rastrear productos actualmente en procesamiento (evitar loops infinitos)
+const processingProducts = new Set();
 
 async function retryWithBackoff(fn, retries = 15, delay = 1000) {
   try {
@@ -106,6 +108,18 @@ async function getBundleFields(productId) {
         return id;
       }
     );
+
+    // PROTECCIÓN: Detectar si el producto se incluye a sí mismo (referencia circular)
+    if (listaProductos.includes(productId)) {
+      console.error(
+        `⚠️ REFERENCIA CIRCULAR DETECTADA: El producto ${productId} se incluye a sí mismo en sus metafields.`
+      );
+      console.error(
+        `   Esto causaría un loop infinito. Removiendo auto-referencia...`
+      );
+      // Filtrar la referencia circular
+      listaProductos = listaProductos.filter((id) => id !== productId);
+    }
 
     let listaCantidad = listaCantidadMetafield
       ? JSON.parse(listaCantidadMetafield.value).map((cantidad) =>
@@ -954,6 +968,17 @@ async function processPromisesBatch(promises, batchSize = 8) {
 }
 
 async function handleProductUp(pId) {
+  // PROTECCIÓN: Evitar procesamiento recursivo del mismo producto
+  if (processingProducts.has(pId)) {
+    console.warn(
+      `⚠️ LOOP DETECTADO: El producto ${pId} ya está siendo procesado. Saltando para evitar recursión infinita.`
+    );
+    return;
+  }
+
+  // Marcar producto como en procesamiento
+  processingProducts.add(pId);
+
   try {
     const id = pId;
     const bundleId = id;
@@ -1111,12 +1136,22 @@ async function handleProductUp(pId) {
       console.log("El producto", bundleId, "es parte de algún bundle");
       for (const bundle of bundles) {
         const id = bundle.productId;
-        updatePromises2.push(() => handleProductUp(id));
+        // PROTECCIÓN: No actualizar si es el mismo producto (evitar ciclo)
+        if (id !== bundleId) {
+          updatePromises2.push(() => handleProductUp(id));
+        } else {
+          console.warn(
+            `⚠️ CICLO EVITADO: Bundle ${id} se contiene a sí mismo. No se procesará recursivamente.`
+          );
+        }
       }
       await processPromisesBatch(updatePromises2);
     }
   } catch (error) {
-    console.log("Error actualizando el bundle:", error);
+    console.log("Error en handleProductUp:", error);
+  } finally {
+    // SIEMPRE remover el producto del set de procesamiento
+    processingProducts.delete(pId);
   }
 }
 async function processProduct(id) {
