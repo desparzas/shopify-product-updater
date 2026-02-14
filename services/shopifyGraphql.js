@@ -1,7 +1,8 @@
 const axios = require("axios");
 const config = require("../utils/config");
+const https = require("https");
 
-const { ACCESS_TOKEN, SHOP, SHOPIFY_API_VERSION } = config;
+const { ACCESS_TOKEN, SHOP, SHOPIFY_API_VERSION, SKIP_SSL_VERIFY } = config;
 const API_VERSION = SHOPIFY_API_VERSION || "2026-01";
 const GRAPHQL_URL = `https://${SHOP}.myshopify.com/admin/api/${API_VERSION}/graphql.json`;
 
@@ -15,16 +16,31 @@ function parseNumericId(gid) {
   return match ? Number(match[1]) : null;
 }
 
+const getAxiosConfig = () => {
+  const config = {
+    headers: {
+      "X-Shopify-Access-Token": ACCESS_TOKEN,
+      "Content-Type": "application/json",
+    },
+  };
+
+  if (String(SKIP_SSL_VERIFY).toLowerCase() === "true") {
+    console.warn(
+      "⚠️ ADVERTENCIA: SSL_VERIFY deshabilitado. Esto NO debe usarse en producción."
+    );
+    config.httpsAgent = new https.Agent({
+      rejectUnauthorized: false,
+    });
+  }
+
+  return config;
+};
+
 async function graphqlRequest(query, variables = {}) {
   const response = await axios.post(
     GRAPHQL_URL,
     { query, variables },
-    {
-      headers: {
-        "X-Shopify-Access-Token": ACCESS_TOKEN,
-        "Content-Type": "application/json",
-      },
-    }
+    getAxiosConfig()
   );
 
   if (response.data && response.data.errors && response.data.errors.length) {
