@@ -4,7 +4,18 @@ const https = require("https");
 
 const { ACCESS_TOKEN, SHOP, SHOPIFY_API_VERSION, SKIP_SSL_VERIFY } = config;
 const API_VERSION = SHOPIFY_API_VERSION || "2026-01";
-const GRAPHQL_URL = `https://${SHOP}.myshopify.com/admin/api/${API_VERSION}/graphql.json`;
+
+// Normalizar SHOP en caso de que venga con .myshopify.com
+const SHOP_NAME = SHOP.replace(".myshopify.com", "");
+const GRAPHQL_URL = `https://${SHOP_NAME}.myshopify.com/admin/api/${API_VERSION}/graphql.json`;
+
+if (String(SKIP_SSL_VERIFY).toLowerCase() === "true") {
+  console.warn(
+    "⚠️ ADVERTENCIA: SSL_VERIFY deshabilitado. Esto NO debe usarse en producción."
+  );
+}
+
+console.log(`[GraphQL] Conectando a: ${GRAPHQL_URL}`);
 
 function buildProductGid(productId) {
   return `gid://shopify/Product/${productId}`;
@@ -25,9 +36,6 @@ const getAxiosConfig = () => {
   };
 
   if (String(SKIP_SSL_VERIFY).toLowerCase() === "true") {
-    console.warn(
-      "⚠️ ADVERTENCIA: SSL_VERIFY deshabilitado. Esto NO debe usarse en producción."
-    );
     config.httpsAgent = new https.Agent({
       rejectUnauthorized: false,
     });
@@ -37,18 +45,29 @@ const getAxiosConfig = () => {
 };
 
 async function graphqlRequest(query, variables = {}) {
-  const response = await axios.post(
-    GRAPHQL_URL,
-    { query, variables },
-    getAxiosConfig()
-  );
+  try {
+    const response = await axios.post(
+      GRAPHQL_URL,
+      { query, variables },
+      getAxiosConfig()
+    );
 
-  if (response.data && response.data.errors && response.data.errors.length) {
-    const messages = response.data.errors.map((e) => e.message).join(" | ");
-    throw new Error(messages);
+    if (response.data && response.data.errors && response.data.errors.length) {
+      const messages = response.data.errors.map((e) => e.message).join(" | ");
+      throw new Error(messages);
+    }
+
+    return response.data.data;
+  } catch (error) {
+    if (error.response && error.response.status === 403) {
+      console.error(
+        `[GraphQL] 403 Forbidden - Verifica que ACCESS_TOKEN es válido y tiene permisos adecuados`
+      );
+      console.error(`[GraphQL] Token: ${ACCESS_TOKEN.substring(0, 10)}...`);
+      console.error(`[GraphQL] Shop: ${SHOP}`);
+    }
+    throw error;
   }
-
-  return response.data.data;
 }
 
 async function fetchProductVariants(productGid) {

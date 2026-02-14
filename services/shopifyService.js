@@ -192,9 +192,19 @@ async function getProductById(productId) {
     });
   } catch (error) {
     if (error.response && error.response.statusCode === 404) {
-      console.log("Producto no encontrado en Shopify");
+      console.log(`[getProductById] Producto ${productId} no encontrado en Shopify`);
       return null;
     }
+    if (error.response && error.response.statusCode === 403) {
+      console.error(
+        `[getProductById] 403 Forbidden para producto ${productId}. Verifica ACCESS_TOKEN y permisos.`
+      );
+      return null;
+    }
+    console.error(
+      `[getProductById] Error obteniendo producto ${productId}:`,
+      error.message
+    );
     return null;
   }
 }
