@@ -2,8 +2,18 @@ const config = require("../utils/config");
 const consts = require("../utils/products");
 const Shopify = require("shopify-api-node");
 const productService = require("./productService");
-const { ACCESS_TOKEN, SHOP, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SCOPES } =
-  config;
+const {
+  ACCESS_TOKEN,
+  SHOP,
+  SHOPIFY_API_KEY,
+  SHOPIFY_API_SECRET,
+  SCOPES,
+  USE_GRAPHQL,
+} = config;
+const {
+  getProductByIdGraphql,
+  getProductCustomMetafieldsGraphql,
+} = require("./shopifyGraphql");
 const shopify = new Shopify({
   shopName: SHOP,
   apiKey: SHOPIFY_API_KEY,
@@ -14,6 +24,10 @@ const productCache = new Map();
 const bundlesCache = new Map();
 // Set para rastrear productos actualmente en procesamiento (evitar loops infinitos)
 const processingProducts = new Set();
+
+function shouldUseGraphql() {
+  return String(USE_GRAPHQL).toLowerCase() === "true";
+}
 
 async function retryWithBackoff(fn, retries = 15, delay = 1000) {
   try {
@@ -40,6 +54,12 @@ async function productCount() {
 }
 
 async function getProductCustomMetafields(productId) {
+  if (shouldUseGraphql()) {
+    return await retryWithBackoff(async () => {
+      return await getProductCustomMetafieldsGraphql(productId);
+    });
+  }
+
   return retryWithBackoff(async () => {
     return await shopify.metafield.list({
       metafield: {
@@ -81,7 +101,10 @@ function isSimpleProduct(product) {
 
 async function getBundleFields(productId) {
   try {
+    console.log(`[getBundleFields] Obteniendo metafields del producto ${productId}...`);
     const metafields = await getProductCustomMetafields(productId);
+    console.log(`[getBundleFields] Metafields obtenidos: ${metafields.length} registros`);
+    console.log(`[getBundleFields] Metafields:`, metafields.map(m => ({ key: m.key, namespace: m.namespace })));
 
     const listaProductosMetafield = metafields.find(
       (metafield) =>
@@ -90,11 +113,13 @@ async function getBundleFields(productId) {
     );
 
     if (!listaProductosMetafield) {
+      console.log(`[getBundleFields] No se encontró metafield 'lista_de_productos' para el producto ${productId}`);
       return {
         productos: [],
         cantidades: [],
       };
     }
+    console.log(`[getBundleFields] Encontrado 'lista_de_productos': ${listaProductosMetafield.value}`);
 
     const listaCantidadMetafield = metafields.find(
       (metafield) =>
@@ -108,11 +133,12 @@ async function getBundleFields(productId) {
         return id;
       }
     );
+    console.log(`[getBundleFields] Productos en el bundle (antes de validación): ${JSON.stringify(listaProductos)}`);
 
     // PROTECCIÓN: Detectar si el producto se incluye a sí mismo (referencia circular)
     if (listaProductos.includes(productId)) {
       console.error(
-        `⚠️ REFERENCIA CIRCULAR DETECTADA: El producto ${productId} se incluye a sí mismo en sus metafields.`
+        `REFERENCIA CIRCULAR DETECTADA: El producto ${productId} se incluye a sí mismo en sus metafields.`
       );
       console.error(
         `   Esto causaría un loop infinito. Removiendo auto-referencia...`
@@ -120,6 +146,7 @@ async function getBundleFields(productId) {
       // Filtrar la referencia circular
       listaProductos = listaProductos.filter((id) => id !== productId);
     }
+    console.log(`[getBundleFields] Productos después de validación: ${JSON.stringify(listaProductos)}`);
 
     let listaCantidad = listaCantidadMetafield
       ? JSON.parse(listaCantidadMetafield.value).map((cantidad) =>
@@ -128,21 +155,25 @@ async function getBundleFields(productId) {
       : Array(listaProductos.length).fill(1);
 
     if (listaCantidad.length !== listaProductos.length) {
+      console.warn(`[getBundleFields] Mismatch entre cantidad de productos (${listaProductos.length}) y cantidades (${listaCantidad.length}). Usando cantidades por defecto (1).`);
       listaCantidad = Array(listaProductos.length).fill(1);
     }
+    console.log(`[getBundleFields] Cantidades: ${JSON.stringify(listaCantidad)}`);
 
+    console.log(`[getBundleFields] Bundle fields retornados: ${listaProductos.length} productos`);
     return {
       productos: listaProductos,
       cantidades: listaCantidad,
     };
   } catch (error) {
     if (error.response && error.response.statusCode === 404) {
-      console.log("Producto no encontrado en Shopify");
+      console.log(`[getBundleFields] Producto ${productId} no encontrado en Shopify`);
       return {
         productos: [],
         cantidades: [],
       };
     }
+    console.error(`[getBundleFields] Error obteniendo bundle fields para producto ${productId}:`, error.message);
     return {
       productos: [],
       cantidades: [],
@@ -152,23 +183,40 @@ async function getBundleFields(productId) {
 
 async function getProductById(productId) {
   try {
+    if (shouldUseGraphql()) {
+      return await retryWithBackoff(() => getProductByIdGraphql(productId));
+    }
+
     return await retryWithBackoff(() => {
       return shopify.product.get(productId);
     });
   } catch (error) {
     if (error.response && error.response.statusCode === 404) {
-      console.log("Producto no encontrado en Shopify");
+      console.log(`[getProductById] Producto ${productId} no encontrado en Shopify`);
       return null;
     }
+    if (error.response && error.response.statusCode === 403) {
+      console.error(
+        `[getProductById] 403 Forbidden para producto ${productId}. Verifica ACCESS_TOKEN y permisos.`
+      );
+      return null;
+    }
+    console.error(
+      `[getProductById] Error obteniendo producto ${productId}:`,
+      error.message
+    );
     return null;
   }
 }
 
 async function updateBundle(productId) {
   try {
+    console.log(`\n========== PROCESANDO BUNDLE ${productId} ==========`);
     const bundle = await getProductById(productId);
+    console.log(`[updateBundle] Producto obtenido: ${bundle ? bundle.title : 'null'}`);
 
     if (!bundle) {
+      console.log(`[updateBundle] Bundle ${productId} no existe en Shopify`);
       return {
         validBundle: false,
         error: "El bundle no existe en Shopify",
@@ -180,6 +228,7 @@ async function updateBundle(productId) {
 
     const bundleFields = await getBundleFields(productId);
     if (!bundleFields) {
+      console.log(`[updateBundle] No se obtuvieron bundle fields para ${productId}`);
       return {
         validBundle: false,
         error: "El producto no tiene campos de bundle, es un producto normal",
@@ -190,8 +239,10 @@ async function updateBundle(productId) {
     }
 
     const { productos, cantidades } = bundleFields;
+    console.log(`[updateBundle] Bundle fields: ${productos.length} productos, cantidades: ${JSON.stringify(cantidades)}`);
 
     if (productos.length === 0) {
+      console.log(`[updateBundle] El bundle no tiene productos configurados (productos array vacío)`);
       return {
         validBundle: false,
         error:
@@ -201,11 +252,21 @@ async function updateBundle(productId) {
         isNormal: true,
       };
     }
+    console.log(`[updateBundle] Bundle válido con ${productos.length} productos`);
 
+    console.log(`[updateBundle] Obteniendo datos de ${productos.length} productos componentes...`);
     const productosPromises = productos.map((id) => {
       return () => getProductById(id);
     });
     const productosBundle = await processPromisesBatch(productosPromises);
+    console.log(`[updateBundle] Productos componentes obtenidos: ${productosBundle.length} registros`);
+    productosBundle.forEach((p, idx) => {
+      if (p) {
+        console.log(`  [${idx}] ${p.title} - ${p.variants.length} variantes`);
+      } else {
+        console.log(`  [${idx}] null (producto no encontrado)`);
+      }
+    });
 
     let optionsCount = 0;
     let variantsCount = 0;
@@ -218,6 +279,7 @@ async function updateBundle(productId) {
         break;
       }
     }
+    console.log(`[updateBundle] All simple products: ${allSimple}`);
 
     if (allSimple) {
       let precioTotal = 0;

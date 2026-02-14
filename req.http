@@ -1,0 +1,40 @@
+@baseUrl = http://localhost:3001
+@shopifyHmac = REPLACE_WITH_VALID_HMAC
+
+# Nota:
+# - El servidor espera body raw (application/json) para calcular HMAC.
+# - Reemplaza @shopifyHmac con el HMAC real generado con WEBHOOK_SECRET.
+
+### Webhook: product update
+POST {{baseUrl}}/webhooks/products/update
+Content-Type: application/json
+X-Shopify-Topic: products/update
+X-Shopify-Shop-Domain: your-shop.myshopify.com
+X-Shopify-Hmac-Sha256: {{shopifyHmac}}
+
+{
+	"id": 15664461250885,
+	"title": "Globo Gigante Osito Crema",
+	"updated_at": "2026-02-14T12:00:00Z"
+}
+
+### Webhook: order create
+POST {{baseUrl}}/webhooks/orders/create
+Content-Type: application/json
+X-Shopify-Topic: orders/create
+X-Shopify-Shop-Domain: your-shop.myshopify.com
+X-Shopify-Hmac-Sha256: {{shopifyHmac}}
+
+{
+	"id": 1234567890,
+	"created_at": "2026-02-14T12:05:00Z",
+	"line_items": [
+		{
+			"id": 111,
+			"product_id": 8603859452229,
+			"variant_id": 444,
+			"quantity": 1,
+			"title": "Bundle de prueba"
+		}
+	]
+}
