@@ -10,6 +10,10 @@ const queue = [];
 
 // Middleware para validar el HMAC
 function verifyHMAC(req, res, next) {
+  if (String(config.SKIP_WEBHOOK_HMAC).toLowerCase() === "true") {
+    return next();
+  }
+
   const hmac = req.headers["x-shopify-hmac-sha256"];
   const hash = crypto
     .createHmac("sha256", config.WEBHOOK_SECRET)
