@@ -416,6 +416,157 @@ async function setInventoryLevelGraphql(inventoryItemGid, locationGid, quantity)
   }
 }
 
+// ─── Obtener primera ubicación del store ──────────────────────────────────────
+
+let _defaultLocationGid = null;
+
+async function getDefaultLocationGraphql() {
+  if (_defaultLocationGid) return _defaultLocationGid;
+
+  const query = `
+    query { locations(first: 1) { nodes { id } } }
+  `;
+  const data = await graphqlRequest(query);
+  _defaultLocationGid = data?.locations?.nodes?.[0]?.id ?? null;
+  return _defaultLocationGid;
+}
+
+// ─── Crear producto con inventario ────────────────────────────────────────────
+
+/**
+ * Crea un producto nuevo en Shopify usando productSet (sin ID = crea nuevo).
+ * Acepta el mismo formato que la REST API (shopify.product.create).
+ *
+ * @param {{ title, status, options?, variants }} productData
+ *   options?: [{name: string}]
+ *   variants: [{option1?, option2?, option3?, price, inventory_management?, inventory_quantity?}]
+ * @returns {Object} Producto creado en shape compatible con REST
+ */
+async function createProductGraphql({ title, status = 'draft', options, variants = [] }) {
+  const gqlStatus = status.toUpperCase();
+
+  // Construir productOptions
+  let productOptions;
+  if (!options || options.length === 0) {
+    // Producto simple → opción por defecto de Shopify
+    productOptions = [{ name: 'Title', values: [{ name: 'Default Title' }] }];
+  } else {
+    productOptions = options.map((opt, i) => {
+      const optionKey = `option${i + 1}`;
+      const uniqueValues = [...new Set(variants.map((v) => v[optionKey]).filter(Boolean))];
+      return { name: opt.name, values: uniqueValues.map((v) => ({ name: v })) };
+    });
+  }
+
+  const optionNames = productOptions.map((o) => o.name);
+  const isSimple = !options || options.length === 0;
+
+  const gqlVariants = variants.map((v) => {
+    const optionValues = isSimple
+      ? [{ optionName: 'Title', name: 'Default Title' }]
+      : optionNames
+          .map((name, i) => {
+            const val = v[`option${i + 1}`];
+            return val != null ? { optionName: name, name: val } : null;
+          })
+          .filter(Boolean);
+    return { optionValues, price: String(v.price ?? '0.00') };
+  });
+
+  const mutation = `
+    mutation productSet($synchronous: Boolean!, $productSet: ProductSetInput!) {
+      productSet(synchronous: $synchronous, input: $productSet) {
+        product {
+          id title
+          options { name values }
+          variants(first: 250) {
+            nodes {
+              id
+              selectedOptions { name value }
+              price
+              inventoryItem { id }
+              inventoryQuantity
+            }
+          }
+        }
+        userErrors { field message code }
+      }
+    }
+  `;
+
+  const data = await graphqlRequest(mutation, {
+    synchronous: true,
+    productSet: { title, status: gqlStatus, productOptions, variants: gqlVariants },
+  });
+
+  const errors = data?.productSet?.userErrors;
+  if (errors && errors.length) {
+    throw new Error(errors.map((e) => e.message).join(' | '));
+  }
+
+  const product = data?.productSet?.product;
+  if (!product) return null;
+
+  const variantNodes = product.variants?.nodes || [];
+
+  // Establecer inventario para variantes que lo requieran
+  const locationId = await getDefaultLocationGraphql();
+  if (locationId) {
+    for (const gqlVariant of variantNodes) {
+      // Encontrar la variante de entrada correspondiente por valores de opción
+      const matchingInput = isSimple
+        ? variants[0]
+        : variants.find((v) =>
+            gqlVariant.selectedOptions.every((so, i) => {
+              const val = v[`option${i + 1}`];
+              return so.value === val;
+            })
+          );
+
+      if (
+        matchingInput &&
+        matchingInput.inventory_management === 'shopify' &&
+        matchingInput.inventory_quantity != null
+      ) {
+        const inventoryItemId = gqlVariant.inventoryItem?.id;
+        if (inventoryItemId) {
+          await setInventoryLevelGraphql(
+            inventoryItemId,
+            locationId,
+            matchingInput.inventory_quantity
+          );
+        }
+      }
+    }
+  }
+
+  return mapProductToRestShape(product, variantNodes);
+}
+
+// ─── Eliminar producto ────────────────────────────────────────────────────────
+
+async function deleteProductGraphql(productId) {
+  const id = typeof productId === 'string' && productId.startsWith('gid://')
+    ? productId
+    : buildProductGid(productId);
+
+  const mutation = `
+    mutation productDelete($input: ProductDeleteInput!) {
+      productDelete(input: $input) {
+        deletedProductId
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const data = await graphqlRequest(mutation, { input: { id } });
+  const errors = data?.productDelete?.userErrors;
+  if (errors && errors.length) {
+    throw new Error(errors.map((e) => e.message).join(' | '));
+  }
+  return data?.productDelete?.deletedProductId;
+}
+
 // ─── Contar productos ─────────────────────────────────────────────────────────
 
 async function getProductCountGraphql() {
@@ -472,6 +623,9 @@ module.exports = {
   updateVariantPriceGraphql,
   getVariantWithInventoryGraphql,
   setInventoryLevelGraphql,
+  getDefaultLocationGraphql,
+  createProductGraphql,
+  deleteProductGraphql,
   getProductCountGraphql,
   listProductsGraphql,
 };
