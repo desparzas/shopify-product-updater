@@ -92,7 +92,7 @@ async function fetchProductVariants(productGid) {
             price
             sku
             inventoryQuantity
-            inventoryItem { tracked }
+            inventoryItem { id tracked }
             selectedOptions { name value }
           }
         }
@@ -151,6 +151,7 @@ function mapProductToRestShape(product, variants) {
       inventory_quantity: variant.inventoryQuantity ?? 0,
       inventory_management: inventoryManagement,
       selectedOptions: selectedOptions,
+      inventoryItemId: variant.inventoryItem?.id ?? null,
     };
   });
 
@@ -435,6 +436,49 @@ async function getDefaultLocationGraphql() {
   return _defaultLocationGid;
 }
 
+// ─── Actualizar inventario en batch ───────────────────────────────────────────
+
+/**
+ * Establece el inventario disponible de múltiples items en una sola llamada GraphQL.
+ * Ideal para bundles con muchas variantes (evita throttling por llamadas individuales).
+ *
+ * @param {Array}  quantities  [{inventoryItemId: GID, quantity: number}]
+ * @param {string} locationGid GID de la ubicación
+ */
+async function batchSetInventoryLevelsGraphql(quantities, locationGid) {
+  if (!quantities || quantities.length === 0) return;
+
+  const mutation = `
+    mutation BatchSetInventory($input: InventorySetQuantitiesInput!) {
+      inventorySetQuantities(input: $input) {
+        inventoryAdjustmentGroup { reason }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const CHUNK = 250;
+  for (let i = 0; i < quantities.length; i += CHUNK) {
+    const chunk = quantities.slice(i, i + CHUNK);
+    const data = await graphqlRequest(mutation, {
+      input: {
+        name: 'available',
+        quantities: chunk.map(({ inventoryItemId, quantity }) => ({
+          inventoryItemId,
+          locationId: locationGid,
+          quantity,
+        })),
+        reason: 'correction',
+        ignoreCompareQuantity: true,
+      },
+    });
+    const errors = data?.inventorySetQuantities?.userErrors;
+    if (errors && errors.length) {
+      console.warn('[batchSetInventoryLevelsGraphql] Errores parciales:', errors);
+    }
+  }
+}
+
 // ─── Crear producto con inventario ────────────────────────────────────────────
 
 const PRODUCT_SET_MUTATION = `
@@ -677,6 +721,7 @@ module.exports = {
   updateVariantPriceGraphql,
   getVariantWithInventoryGraphql,
   setInventoryLevelGraphql,
+  batchSetInventoryLevelsGraphql,
   getDefaultLocationGraphql,
   createProductGraphql,
   deleteProductGraphql,

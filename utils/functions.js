@@ -5,7 +5,8 @@ function extractNumber(title) {
 
 /**
  * Reintenta una función asíncrona con backoff exponencial cuando Shopify
- * devuelve 429 (rate limit). Compatible con axios (status) y node http (statusCode).
+ * devuelve 429 (rate limit) o "Throttled" vía GraphQL (HTTP 200 con error en body).
+ * Compatible con axios (status) y node http (statusCode).
  *
  * @param {Function} fn        Función a ejecutar: () => Promise
  * @param {number}   retries   Número máximo de reintentos (default 15)
@@ -16,7 +17,8 @@ async function retryWithBackoff(fn, retries = 15, delay = 1000) {
     return await fn();
   } catch (error) {
     const status = error.response?.status ?? error.response?.statusCode;
-    if (status === 429 && retries > 0) {
+    const isThrottled = status === 429 || error.message === 'Throttled';
+    if (isThrottled && retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       return retryWithBackoff(fn, retries - 1, delay * 2);
     }
