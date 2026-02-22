@@ -407,6 +407,7 @@ async function setInventoryLevelGraphql(inventoryItemGid, locationGid, quantity)
       name: 'available',
       quantities: [{ inventoryItemId: inventoryItemGid, locationId: locationGid, quantity }],
       reason: 'correction',
+      ignoreCompareQuantity: true,
     },
   });
 
@@ -433,9 +434,49 @@ async function getDefaultLocationGraphql() {
 
 // ─── Crear producto con inventario ────────────────────────────────────────────
 
+const PRODUCT_SET_MUTATION = `
+  mutation productSet($synchronous: Boolean!, $productSet: ProductSetInput!) {
+    productSet(synchronous: $synchronous, input: $productSet) {
+      product {
+        id title
+        options { name values }
+        variants(first: 250) {
+          nodes {
+            id
+            selectedOptions { name value }
+            price
+            inventoryItem { id tracked }
+            inventoryQuantity
+          }
+        }
+      }
+      userErrors { field message code }
+    }
+  }
+`;
+
+const BULK_CREATE_VARIANTS_MUTATION = `
+  mutation productVariantsBulkCreate($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+    productVariantsBulkCreate(productId: $productId, variants: $variants) {
+      productVariants {
+        id
+        selectedOptions { name value }
+        price
+        inventoryItem { id tracked }
+        inventoryQuantity
+      }
+      userErrors { field message }
+    }
+  }
+`;
+
 /**
- * Crea un producto nuevo en Shopify usando productSet (sin ID = crea nuevo).
+ * Crea un producto nuevo en Shopify.
  * Acepta el mismo formato que la REST API (shopify.product.create).
+ *
+ * Para productos con más de 100 variantes, crea el producto con las primeras 100
+ * y agrega el resto en lotes de 100 via productVariantsBulkCreate.
+ * Todo el inventario se establece en una sola llamada al final.
  *
  * @param {{ title, status, options?, variants }} productData
  *   options?: [{name: string}]
@@ -443,12 +484,13 @@ async function getDefaultLocationGraphql() {
  * @returns {Object} Producto creado en shape compatible con REST
  */
 async function createProductGraphql({ title, status = 'draft', options, variants = [] }) {
+  const CHUNK = 100;
   const gqlStatus = status.toUpperCase();
+  const isSimple = !options || options.length === 0;
 
   // Construir productOptions
   let productOptions;
-  if (!options || options.length === 0) {
-    // Producto simple → opción por defecto de Shopify
+  if (isSimple) {
     productOptions = [{ name: 'Title', values: [{ name: 'Default Title' }] }];
   } else {
     productOptions = options.map((opt, i) => {
@@ -459,68 +501,63 @@ async function createProductGraphql({ title, status = 'draft', options, variants
   }
 
   const optionNames = productOptions.map((o) => o.name);
-  const isSimple = !options || options.length === 0;
 
-  const gqlVariants = variants.map((v) => {
-    const optionValues = isSimple
+  const toGqlVariant = (v) => ({
+    optionValues: isSimple
       ? [{ optionName: 'Title', name: 'Default Title' }]
       : optionNames
           .map((name, i) => {
             const val = v[`option${i + 1}`];
             return val != null ? { optionName: name, name: val } : null;
           })
-          .filter(Boolean);
-    return { optionValues, price: String(v.price ?? '0.00') };
+          .filter(Boolean),
+    price: String(v.price ?? '0.00'),
   });
 
-  const mutation = `
-    mutation productSet($synchronous: Boolean!, $productSet: ProductSetInput!) {
-      productSet(synchronous: $synchronous, input: $productSet) {
-        product {
-          id title
-          options { name values }
-          variants(first: 250) {
-            nodes {
-              id
-              selectedOptions { name value }
-              price
-              inventoryItem { id }
-              inventoryQuantity
-            }
-          }
-        }
-        userErrors { field message code }
-      }
-    }
-  `;
+  const gqlVariants = variants.map(toGqlVariant);
 
-  const data = await graphqlRequest(mutation, {
+  // ── Paso 1: crear producto con las primeras CHUNK variantes ──────────────
+  const firstChunk = gqlVariants.slice(0, CHUNK);
+  const data = await graphqlRequest(PRODUCT_SET_MUTATION, {
     synchronous: true,
-    productSet: { title, status: gqlStatus, productOptions, variants: gqlVariants },
+    productSet: { title, status: gqlStatus, productOptions, variants: firstChunk },
   });
 
-  const errors = data?.productSet?.userErrors;
-  if (errors && errors.length) {
-    throw new Error(errors.map((e) => e.message).join(' | '));
+  const setErrors = data?.productSet?.userErrors;
+  if (setErrors && setErrors.length) {
+    throw new Error(setErrors.map((e) => e.message).join(' | '));
   }
 
   const product = data?.productSet?.product;
   if (!product) return null;
 
-  const variantNodes = product.variants?.nodes || [];
+  const allVariantNodes = [...(product.variants?.nodes || [])];
 
-  // Establecer inventario para variantes que lo requieran
+  // ── Paso 2: agregar variantes restantes en lotes de CHUNK ────────────────
+  const remaining = gqlVariants.slice(CHUNK);
+  for (let i = 0; i < remaining.length; i += CHUNK) {
+    const batch = remaining.slice(i, i + CHUNK);
+    const bulkData = await graphqlRequest(BULK_CREATE_VARIANTS_MUTATION, {
+      productId: product.id,
+      variants: batch,
+    });
+    const bulkErrors = bulkData?.productVariantsBulkCreate?.userErrors;
+    if (bulkErrors && bulkErrors.length) {
+      throw new Error(bulkErrors.map((e) => e.message).join(' | '));
+    }
+    allVariantNodes.push(...(bulkData?.productVariantsBulkCreate?.productVariants || []));
+  }
+
+  // ── Paso 3: establecer todo el inventario en una sola llamada ────────────
   const locationId = await getDefaultLocationGraphql();
   if (locationId) {
-    for (const gqlVariant of variantNodes) {
-      // Encontrar la variante de entrada correspondiente por valores de opción
+    const quantities = [];
+
+    for (const gqlVariant of allVariantNodes) {
       const matchingInput = isSimple
         ? variants[0]
         : variants.find((v) =>
-            gqlVariant.selectedOptions.every((so, i) => {
-              const val = v[`option${i + 1}`];
-              return so.value === val;
-            })
+            gqlVariant.selectedOptions.every((so, i) => so.value === v[`option${i + 1}`])
           );
 
       if (
@@ -530,17 +567,31 @@ async function createProductGraphql({ title, status = 'draft', options, variants
       ) {
         const inventoryItemId = gqlVariant.inventoryItem?.id;
         if (inventoryItemId) {
-          await setInventoryLevelGraphql(
-            inventoryItemId,
-            locationId,
-            matchingInput.inventory_quantity
-          );
+          quantities.push({ inventoryItemId, locationId, quantity: matchingInput.inventory_quantity });
         }
+      }
+    }
+
+    if (quantities.length > 0) {
+      const setInvMutation = `
+        mutation SetInventoryBatch($input: InventorySetQuantitiesInput!) {
+          inventorySetQuantities(input: $input) {
+            inventoryAdjustmentGroup { reason }
+            userErrors { field message }
+          }
+        }
+      `;
+      const invData = await graphqlRequest(setInvMutation, {
+        input: { name: 'available', quantities, reason: 'correction', ignoreCompareQuantity: true },
+      });
+      const invErrors = invData?.inventorySetQuantities?.userErrors;
+      if (invErrors && invErrors.length) {
+        console.warn('[createProductGraphql] Inventario parcialmente fallido:', invErrors);
       }
     }
   }
 
-  return mapProductToRestShape(product, variantNodes);
+  return mapProductToRestShape(product, allVariantNodes);
 }
 
 // ─── Eliminar producto ────────────────────────────────────────────────────────
