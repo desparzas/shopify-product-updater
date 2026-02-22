@@ -14,7 +14,7 @@ connectDB();
 // Middleware para recibir el cuerpo raw de los webhooks
 app.use(morgan("dev"));
 app.use(cors());
-app.use(bodyParser.raw({ type: "application/json" }));
+app.use(bodyParser.raw({ type: "application/json", limit: "10mb" }));
 
 app.use((req, res, next) => {
   // console.log("Headers de la petición:", req.headers);
