@@ -168,7 +168,52 @@ function generateVariantCombinations(optionsOut, productosBundle, cantidades) {
   return variants;
 }
 
+/**
+ * Dado el optionsOut CON metadata y los valores de la variante vendida,
+ * devuelve [{product, variant}] — uno por cada copia de componente no-simple
+ * involucrada en esa combinación.
+ *
+ * Usa la misma lógica de agrupamiento que generateVariantCombinations:
+ * agrupa por (productOriginalId, productCopyIndex) para identificar
+ * exactamente qué variante de cada componente corresponde a cada slot del bundle.
+ *
+ * @param {Array} optionsOutWithMeta  optionsOut con productOriginalId, productCopyIndex, productOptionPosition
+ * @param {Array} productosBundle     Productos componentes (shape REST)
+ * @param {Array} soldOptionValues    [option1, option2, option3] de la variante vendida (null si no aplica)
+ * @returns {Array} [{product, variant}]
+ */
+function resolveInventoryReductions(optionsOutWithMeta, productosBundle, soldOptionValues) {
+  const groups = new Map();
+
+  for (let i = 0; i < optionsOutWithMeta.length; i++) {
+    const opt = optionsOutWithMeta[i];
+    const soldValue = soldOptionValues[i] ?? null;
+    if (soldValue == null) continue;
+
+    const key = `${opt.productOriginalId}:${opt.productCopyIndex}`;
+    if (!groups.has(key)) {
+      groups.set(key, { productId: opt.productOriginalId, selectedOptions: [] });
+    }
+    groups.get(key).selectedOptions.push({
+      position: opt.productOptionPosition,
+      value: soldValue,
+    });
+  }
+
+  const result = [];
+  for (const [, group] of groups) {
+    const product = productosBundle.find((p) => p && p.id === group.productId);
+    if (!product) continue;
+    const variant = findVariantForProductCopy(product, group.selectedOptions);
+    if (!variant) continue;
+    result.push({ product, variant });
+  }
+  return result;
+}
+
 module.exports = {
   cartesianProduct,
+  findVariantForProductCopy,
   generateVariantCombinations,
+  resolveInventoryReductions,
 };
