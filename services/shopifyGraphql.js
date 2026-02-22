@@ -1,6 +1,7 @@
 const axios = require("axios");
 const config = require("../utils/config");
 const https = require("https");
+const { retryWithBackoff } = require("../utils/functions");
 
 const { ACCESS_TOKEN, SHOP, SHOPIFY_API_VERSION, SKIP_SSL_VERIFY } = config;
 const API_VERSION = SHOPIFY_API_VERSION || "2026-01";
@@ -45,29 +46,31 @@ const getAxiosConfig = () => {
 };
 
 async function graphqlRequest(query, variables = {}) {
-  try {
-    const response = await axios.post(
-      GRAPHQL_URL,
-      { query, variables },
-      getAxiosConfig()
-    );
-
-    if (response.data && response.data.errors && response.data.errors.length) {
-      const messages = response.data.errors.map((e) => e.message).join(" | ");
-      throw new Error(messages);
-    }
-
-    return response.data.data;
-  } catch (error) {
-    if (error.response && error.response.status === 403) {
-      console.error(
-        `[GraphQL] 403 Forbidden - Verifica que ACCESS_TOKEN es válido y tiene permisos adecuados`
+  return retryWithBackoff(async () => {
+    try {
+      const response = await axios.post(
+        GRAPHQL_URL,
+        { query, variables },
+        getAxiosConfig()
       );
-      console.error(`[GraphQL] Token: ${ACCESS_TOKEN.substring(0, 10)}...`);
-      console.error(`[GraphQL] Shop: ${SHOP}`);
+
+      if (response.data && response.data.errors && response.data.errors.length) {
+        const messages = response.data.errors.map((e) => e.message).join(" | ");
+        throw new Error(messages);
+      }
+
+      return response.data.data;
+    } catch (error) {
+      if (error.response && error.response.status === 403) {
+        console.error(
+          `[GraphQL] 403 Forbidden - Verifica que ACCESS_TOKEN es válido y tiene permisos adecuados`
+        );
+        console.error(`[GraphQL] Token: ${ACCESS_TOKEN.substring(0, 10)}...`);
+        console.error(`[GraphQL] Shop: ${SHOP}`);
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 async function fetchProductVariants(productGid) {

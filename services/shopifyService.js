@@ -1,5 +1,6 @@
 const consts = require("../utils/products");
 const productService = require("./productService");
+const { retryWithBackoff } = require("../utils/functions");
 const {
   getProductByIdGraphql,
   getProductCustomMetafieldsGraphql,
@@ -14,20 +15,6 @@ const { generateVariantCombinations } = require("./variantGenerator");
 
 // Set para rastrear productos actualmente en procesamiento (evitar loops infinitos)
 const processingProducts = new Set();
-
-async function retryWithBackoff(fn, retries = 15, delay = 1000) {
-  try {
-    return await fn();
-  } catch (error) {
-    if (error.response && error.response.statusCode === 429 && retries > 0) {
-      // console.log(`Rate limit hit, retrying in ${delay}ms...`);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      return retryWithBackoff(fn, retries - 1, delay * 2);
-    } else {
-      throw error;
-    }
-  }
-}
 
 async function actualizarVarianteProducto(variantId, price) {
   return await retryWithBackoff(() => updateVariantPriceGraphql(variantId, price));
