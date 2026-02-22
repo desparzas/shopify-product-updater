@@ -219,8 +219,259 @@ async function getProductCustomMetafieldsGraphql(productId) {
   return metafields;
 }
 
+// ─── Helpers de GIDs ──────────────────────────────────────────────────────────
+
+function buildVariantGid(variantId) {
+  return `gid://shopify/ProductVariant/${variantId}`;
+}
+
+function buildInventoryItemGid(inventoryItemId) {
+  return `gid://shopify/InventoryItem/${inventoryItemId}`;
+}
+
+// ─── Actualizar variante (precio) ─────────────────────────────────────────────
+
+async function updateVariantPriceGraphql(variantId, price) {
+  const id = typeof variantId === 'string' && variantId.startsWith('gid://')
+    ? variantId
+    : buildVariantGid(variantId);
+
+  const mutation = `
+    mutation UpdateVariantPrice($id: ID!, $price: Money!) {
+      productVariantUpdate(input: { id: $id, price: $price }) {
+        productVariant { id price }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const data = await graphqlRequest(mutation, { id, price: String(price) });
+  const errors = data?.productVariantUpdate?.userErrors;
+  if (errors && errors.length) {
+    throw new Error(errors.map((e) => e.message).join(' | '));
+  }
+  return data?.productVariantUpdate?.productVariant;
+}
+
+// ─── Actualizar producto con opciones y variantes (productSet) ────────────────
+
+/**
+ * Actualiza un bundle con el conjunto completo de opciones y variantes.
+ * Usa productSet (API 2024-01+) que reemplaza todas las variantes de una vez.
+ *
+ * @param {number|string} productId  ID numérico o GID del producto
+ * @param {Array} optionsOut         [{name, values: string[]}]
+ * @param {Array} variantsOut        [{option1, option2, option3, price}]
+ * @returns {Object} Producto actualizado en shape compatible con REST
+ */
+async function updateProductGraphql(productId, optionsOut, variantsOut) {
+  const productGid = typeof productId === 'string' && productId.startsWith('gid://')
+    ? productId
+    : buildProductGid(productId);
+
+  // productOptions: [{name, values: [{name}]}]
+  const productOptions = optionsOut.map((opt) => ({
+    name: opt.name,
+    values: opt.values.map((v) => ({ name: v })),
+  }));
+
+  // variants: [{optionValues: [{optionName, name}], price}]
+  const optionNames = optionsOut.map((o) => o.name);
+  const variants = variantsOut.map((v) => {
+    const slotValues = [v.option1, v.option2, v.option3];
+    const optionValues = optionNames
+      .map((name, i) => (slotValues[i] != null ? { optionName: name, name: slotValues[i] } : null))
+      .filter(Boolean);
+    return {
+      optionValues,
+      price: String(v.price),
+    };
+  });
+
+  const mutation = `
+    mutation productSet($synchronous: Boolean!, $productSet: ProductSetInput!) {
+      productSet(synchronous: $synchronous, input: $productSet) {
+        product {
+          id title
+          options { name values }
+          variants(first: 250) {
+            nodes {
+              id
+              selectedOptions { name value }
+              price
+              inventoryItem { id }
+              inventoryQuantity
+            }
+          }
+        }
+        userErrors { field message code }
+      }
+    }
+  `;
+
+  const data = await graphqlRequest(mutation, {
+    synchronous: true,
+    productSet: {
+      id: productGid,
+      productOptions,
+      variants,
+    },
+  });
+
+  const errors = data?.productSet?.userErrors;
+  if (errors && errors.length) {
+    throw new Error(errors.map((e) => e.message).join(' | '));
+  }
+
+  const product = data?.productSet?.product;
+  if (!product) return null;
+
+  const variantNodes = product.variants?.nodes || [];
+  const mappedProduct = mapProductToRestShape(product, variantNodes);
+  return mappedProduct;
+}
+
+// ─── Obtener variante con info de inventario ──────────────────────────────────
+
+/**
+ * Obtiene una variante y sus niveles de inventario en una sola query.
+ * Reemplaza getVariant() + getInventoryLevels() (dos llamadas REST → una GraphQL).
+ *
+ * @param {number|string} variantId  ID numérico o GID de la variante
+ * @returns {{ inventory_management, inventoryItemGid, inventoryLevels: [{locationGid, available}] }}
+ */
+async function getVariantWithInventoryGraphql(variantId) {
+  const id = typeof variantId === 'string' && variantId.startsWith('gid://')
+    ? variantId
+    : buildVariantGid(variantId);
+
+  const query = `
+    query GetVariantInventory($id: ID!) {
+      productVariant(id: $id) {
+        id
+        inventoryItem {
+          id
+          tracked
+          inventoryLevels(first: 10) {
+            nodes {
+              location { id }
+              quantities(names: ["available"]) { name quantity }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const data = await graphqlRequest(query, { id });
+  const variant = data?.productVariant;
+  if (!variant) return null;
+
+  const item = variant.inventoryItem;
+  const tracked = item?.tracked ?? false;
+
+  const inventoryLevels = (item?.inventoryLevels?.nodes || []).map((node) => ({
+    locationGid: node.location?.id,
+    available: node.quantities?.find((q) => q.name === 'available')?.quantity ?? 0,
+  }));
+
+  return {
+    inventory_management: tracked ? 'shopify' : null,
+    inventoryItemGid: item?.id,
+    inventoryLevels,
+  };
+}
+
+// ─── Establecer nivel de inventario (cantidad absoluta) ───────────────────────
+
+/**
+ * Establece el inventario disponible de un item en una ubicación.
+ * Reemplaza shopify.inventoryLevel.set().
+ *
+ * @param {string} inventoryItemGid  GID del InventoryItem
+ * @param {string} locationGid       GID de la Location
+ * @param {number} quantity          Cantidad absoluta a establecer
+ */
+async function setInventoryLevelGraphql(inventoryItemGid, locationGid, quantity) {
+  const mutation = `
+    mutation SetInventory($input: InventorySetQuantitiesInput!) {
+      inventorySetQuantities(input: $input) {
+        inventoryAdjustmentGroup { reason }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const data = await graphqlRequest(mutation, {
+    input: {
+      name: 'available',
+      quantities: [{ inventoryItemId: inventoryItemGid, locationId: locationGid, quantity }],
+      reason: 'correction',
+    },
+  });
+
+  const errors = data?.inventorySetQuantities?.userErrors;
+  if (errors && errors.length) {
+    throw new Error(errors.map((e) => e.message).join(' | '));
+  }
+}
+
+// ─── Contar productos ─────────────────────────────────────────────────────────
+
+async function getProductCountGraphql() {
+  const query = `query { productsCount { count } }`;
+  const data = await graphqlRequest(query);
+  return data?.productsCount?.count ?? 0;
+}
+
+// ─── Listar todos los productos (paginado) ────────────────────────────────────
+
+async function listProductsGraphql() {
+  const allProducts = [];
+  let hasNextPage = true;
+  let after = null;
+
+  const query = `
+    query ListProducts($first: Int!, $after: String) {
+      products(first: $first, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id title
+          options { name values }
+        }
+      }
+    }
+  `;
+
+  while (hasNextPage) {
+    const data = await graphqlRequest(query, { first: 250, after });
+    if (!data || !data.products) break;
+
+    const connection = data.products;
+
+    for (const product of connection.nodes || []) {
+      const variants = await fetchProductVariants(product.id);
+      const mapped = mapProductToRestShape(product, variants);
+      if (mapped) allProducts.push(mapped);
+    }
+
+    hasNextPage = connection.pageInfo.hasNextPage;
+    after = connection.pageInfo.endCursor;
+  }
+
+  return allProducts;
+}
+
 module.exports = {
   graphqlRequest,
+  buildVariantGid,
+  buildInventoryItemGid,
   getProductByIdGraphql,
   getProductCustomMetafieldsGraphql,
+  updateProductGraphql,
+  updateVariantPriceGraphql,
+  getVariantWithInventoryGraphql,
+  setInventoryLevelGraphql,
+  getProductCountGraphql,
+  listProductsGraphql,
 };
