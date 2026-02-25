@@ -113,6 +113,7 @@ function generateVariantCombinations(optionsOut, productosBundle, cantidades) {
 
     for (let i = 0; i < optionsOut.length; i++) {
       const opt = optionsOut[i];
+      if (opt.isProductLinked) continue;
       const key = `${opt.productOriginalId}:${opt.productCopyIndex}`;
       if (!productCopyGroups.has(key)) {
         productCopyGroups.set(key, {
@@ -145,6 +146,22 @@ function generateVariantCombinations(optionsOut, productosBundle, cantidades) {
         if (inv < minVar) {
           minVar = Math.floor(inv);
         }
+      }
+    }
+
+    // Precio e inventario de opciones vinculadas a productos independientes
+    for (let i = 0; i < optionsOut.length; i++) {
+      const opt = optionsOut[i];
+      if (!opt.isProductLinked) continue;
+      const linkedIdx = opt.values.indexOf(optionValues[i]);
+      const linkedProduct = opt.linkedProducts?.[linkedIdx];
+      if (!linkedProduct) continue;
+      const v = linkedProduct.variants[0];
+      if (!v) continue;
+      priceTotal += parseFloat(v.price);
+      if (v.inventory_management === 'shopify') {
+        const inv = v.inventory_quantity;
+        if (inv < minVar) minVar = Math.floor(inv);
       }
     }
 
@@ -187,6 +204,7 @@ function resolveInventoryReductions(optionsOutWithMeta, productosBundle, soldOpt
 
   for (let i = 0; i < optionsOutWithMeta.length; i++) {
     const opt = optionsOutWithMeta[i];
+    if (opt.isProductLinked) continue;
     const soldValue = soldOptionValues[i] ?? null;
     if (soldValue == null) continue;
 
@@ -208,6 +226,21 @@ function resolveInventoryReductions(optionsOutWithMeta, productosBundle, soldOpt
     if (!variant) continue;
     result.push({ product, variant });
   }
+
+  // Resolver opciones vinculadas a productos independientes
+  for (let i = 0; i < optionsOutWithMeta.length; i++) {
+    const opt = optionsOutWithMeta[i];
+    if (!opt.isProductLinked) continue;
+    const soldValue = soldOptionValues[i] ?? null;
+    if (soldValue == null) continue;
+    const linkedIdx = opt.values.indexOf(soldValue);
+    const linkedProduct = opt.linkedProducts?.[linkedIdx];
+    if (!linkedProduct) continue;
+    const variant = linkedProduct.variants[0];
+    if (!variant) continue;
+    result.push({ product: linkedProduct, variant });
+  }
+
   return result;
 }
 

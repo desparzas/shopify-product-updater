@@ -34,8 +34,8 @@ async function getBundlesDBWithProduct(id) {
   try {
     const productsMongo = await productService.getAllProducts();
     const bundles = productsMongo.filter((product) => {
-      const { productos } = product;
-      return productos.includes(id);
+      const { productos, productosVinculados } = product;
+      return productos.includes(id) || (productosVinculados && productosVinculados.includes(id));
     });
 
     return bundles;
@@ -119,10 +119,20 @@ async function getBundleFields(productId) {
     }
     console.log(`[getBundleFields] Cantidades: ${JSON.stringify(listaCantidad)}`);
 
-    console.log(`[getBundleFields] Bundle fields retornados: ${listaProductos.length} productos`);
+    const opcionesVinculadasMetafield = metafields.find(
+      (metafield) =>
+        metafield.key === "opciones_vinculadas" &&
+        metafield.namespace === "custom"
+    );
+    const opcionesVinculadas = opcionesVinculadasMetafield
+      ? (JSON.parse(opcionesVinculadasMetafield.value).data ?? [])
+      : [];
+
+    console.log(`[getBundleFields] Bundle fields retornados: ${listaProductos.length} productos, ${opcionesVinculadas.length} opciones vinculadas`);
     return {
       productos: listaProductos,
       cantidades: listaCantidad,
+      opcionesVinculadas,
     };
   } catch (error) {
     if (error.response && error.response.statusCode === 404) {
@@ -130,12 +140,14 @@ async function getBundleFields(productId) {
       return {
         productos: [],
         cantidades: [],
+        opcionesVinculadas: [],
       };
     }
     console.error(`[getBundleFields] Error obteniendo bundle fields para producto ${productId}:`, error.message);
     return {
       productos: [],
       cantidades: [],
+      opcionesVinculadas: [],
     };
   }
 }
@@ -191,8 +203,8 @@ async function updateBundle(productId) {
       };
     }
 
-    const { productos, cantidades } = bundleFields;
-    console.log(`[updateBundle] Bundle fields: ${productos.length} productos, cantidades: ${JSON.stringify(cantidades)}`);
+    const { productos, cantidades, opcionesVinculadas } = bundleFields;
+    console.log(`[updateBundle] Bundle fields: ${productos.length} productos, cantidades: ${JSON.stringify(cantidades)}, ${opcionesVinculadas.length} opciones vinculadas`);
 
     if (productos.length === 0) {
       console.log(`[updateBundle] El bundle no tiene productos configurados (productos array vacío)`);
@@ -234,7 +246,7 @@ async function updateBundle(productId) {
     }
     console.log(`[updateBundle] All simple products: ${allSimple}`);
 
-    if (allSimple) {
+    if (allSimple && opcionesVinculadas.length === 0) {
       let precioTotal = 0;
       let minInv = Infinity;
       for (let i = 0; i < productosBundle.length; i++) {
@@ -337,6 +349,56 @@ async function updateBundle(productId) {
         };
       }
     }
+
+    // Agregar opciones vinculadas a productos independientes
+    if (opcionesVinculadas.length > 0) {
+      const linkedProductIds = opcionesVinculadas.flatMap((ov) => ov.productos);
+      const linkedProductsAll = await processPromisesBatch(
+        linkedProductIds.map((id) => () => getProductById(id))
+      );
+      const linkedProductMap = new Map();
+      linkedProductIds.forEach((id, idx) => {
+        if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
+      });
+
+      for (const ov of opcionesVinculadas) {
+        const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id)).filter(Boolean);
+        optionsOut.push({
+          name: ov.nombre,
+          values: ov.valores,
+          isProductLinked: true,
+          linkedProducts,
+        });
+        optionsCount += 1;
+        if (variantsCount === 0) {
+          variantsCount = ov.valores.length;
+        } else {
+          variantsCount *= ov.valores.length;
+        }
+        if (optionsCount > 3) {
+          return {
+            validBundle: false,
+            error: "El bundle tiene más de 3 opciones (límite de Shopify)",
+            optionsOut: [],
+            variantsOut: [],
+            isNormal: false,
+          };
+        }
+        if (variantsCount > 1500) {
+          console.warn(`[updateBundle] ⚠️ Bundle ${productId} generaría ${variantsCount} variantes (>1500, acercándose al límite de 2048)`);
+        }
+        if (variantsCount > 2048) {
+          return {
+            validBundle: false,
+            error: `El bundle tiene más de 2048 variantes (${variantsCount})`,
+            optionsOut: [],
+            variantsOut: [],
+            isNormal: false,
+          };
+        }
+      }
+    }
+
     // console.log("Options", optionsOut);
 
     optionsOut = makeTitlesUnique(optionsOut);
@@ -478,7 +540,7 @@ async function processPromisesBatch(promises, batchSize = 8) {
  * @returns {{ optionsOut, productosBundle, cantidades, productos } | null}
  */
 async function buildBundleOptionsData(product_id) {
-  const { productos, cantidades } = await getBundleFields(product_id);
+  const { productos, cantidades, opcionesVinculadas } = await getBundleFields(product_id);
   if (!productos.length) return null;
 
   const productosBundle = await processPromisesBatch(
@@ -504,6 +566,28 @@ async function buildBundleOptionsData(product_id) {
           productCopyIndex: copy,
         });
       }
+    }
+  }
+
+  // Agregar opciones vinculadas con sus productos cargados
+  if (opcionesVinculadas.length > 0) {
+    const linkedProductIds = opcionesVinculadas.flatMap((ov) => ov.productos);
+    const linkedProductsAll = await processPromisesBatch(
+      linkedProductIds.map((id) => () => getProductById(id))
+    );
+    const linkedProductMap = new Map();
+    linkedProductIds.forEach((id, idx) => {
+      if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
+    });
+
+    for (const ov of opcionesVinculadas) {
+      const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id)).filter(Boolean);
+      optionsRaw.push({
+        name: ov.nombre,
+        values: ov.valores,
+        isProductLinked: true,
+        linkedProducts,
+      });
     }
   }
 
@@ -698,6 +782,7 @@ async function processProduct(id) {
     const productData = {
       productId: id,
       ...bundleFields,
+      productosVinculados: (bundleFields.opcionesVinculadas || []).flatMap((ov) => ov.productos),
     };
 
     let pReturn = null;
