@@ -76,6 +76,7 @@ async function getBundleFields(productId) {
       return {
         productos: [],
         cantidades: [],
+        opcionesVinculadas: [],
       };
     }
     console.log(`[getBundleFields] Encontrado 'lista_de_productos': ${listaProductosMetafield.value}`);
@@ -434,6 +435,7 @@ async function updateBundle(productId) {
       error: "Error validando el bundle",
       optionsOut: [],
       variantsOut: [],
+      isNormal: true,
     };
   }
 }
