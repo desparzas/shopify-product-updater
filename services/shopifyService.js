@@ -34,8 +34,8 @@ async function getBundlesDBWithProduct(id) {
   try {
     const productsMongo = await productService.getAllProducts();
     const bundles = productsMongo.filter((product) => {
-      const { productos } = product;
-      return productos.includes(id);
+      const { productos, productosVinculados } = product;
+      return productos.includes(id) || (productosVinculados && productosVinculados.includes(id));
     });
 
     return bundles;
@@ -782,6 +782,7 @@ async function processProduct(id) {
     const productData = {
       productId: id,
       ...bundleFields,
+      productosVinculados: (bundleFields.opcionesVinculadas || []).flatMap((ov) => ov.productos),
     };
 
     let pReturn = null;

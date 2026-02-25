@@ -20,6 +20,10 @@ const productSchema = new Schema(
       type: [Number], // Cantidades de productos relacionados
       required: true,
     },
+    productosVinculados: {
+      type: [Number], // IDs de productos referenciados en opciones_vinculadas
+      default: [],
+    },
   },
   {
     timestamps: true, // Para createdAt y updatedAt
