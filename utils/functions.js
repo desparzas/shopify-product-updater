@@ -4,11 +4,28 @@ function extractNumber(title) {
 }
 
 /**
- * Reintenta una función asíncrona con backoff exponencial ante:
- *  - 429 / "Throttled": rate limit de Shopify
- *  - 5xx: errores transitorios del servidor
- *  - Errores de red (ECONNRESET, ETIMEDOUT, ECONNREFUSED, etc.)
- * Compatible con axios (status) y node http (statusCode).
+ * Reintenta una función asíncrona con backoff exponencial ante errores transitorios:
+ *
+ * Rate limit:
+ *  - 429 / "Throttled": rate limit de Shopify (REST o GraphQL)
+ *
+ * Errores de servidor:
+ *  - 5xx (500-599): errores transitorios del servidor
+ *
+ * Errores de red (Node.js / axios):
+ *  - ECONNRESET    — conexión cerrada inesperadamente por el servidor
+ *  - ETIMEDOUT     — timeout de conexión a nivel de socket
+ *  - ECONNREFUSED  — el servidor rechazó la conexión (puerto cerrado)
+ *  - ECONNABORTED  — axios abortó la request (timeout de axios)
+ *  - ENOTFOUND     — DNS no resolvió el host
+ *  - EAI_AGAIN     — DNS falló temporalmente (retry DNS)
+ *  - EPIPE         — pipe roto (servidor cerró la conexión al escribir)
+ *  - EHOSTUNREACH  — host no alcanzable (routing transitorio)
+ *  - ENETUNREACH   — red no alcanzable (problema de red transitorio)
+ *
+ * NO reintenta:
+ *  - 4xx (salvo 429): errores del cliente (400, 401, 403, 404…)
+ *  - Errores de lógica / programación
  *
  * @param {Function} fn        Función a ejecutar: () => Promise
  * @param {number}   retries   Número máximo de reintentos (default 15)
@@ -25,8 +42,12 @@ async function retryWithBackoff(fn, retries = 15, delay = 1000) {
       error.code === 'ECONNRESET' ||
       error.code === 'ETIMEDOUT' ||
       error.code === 'ECONNREFUSED' ||
+      error.code === 'ECONNABORTED' ||
       error.code === 'ENOTFOUND' ||
-      error.code === 'EAI_AGAIN'
+      error.code === 'EAI_AGAIN' ||
+      error.code === 'EPIPE' ||
+      error.code === 'EHOSTUNREACH' ||
+      error.code === 'ENETUNREACH'
     );
 
     if ((isThrottled || isServerError || isNetworkError) && retries > 0) {
