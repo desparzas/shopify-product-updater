@@ -12,6 +12,7 @@ const {
   getDefaultLocationGraphql,
   getProductCountGraphql,
   listProductsGraphql,
+  listProductsWithZeroPriceGraphql,
 } = require("./shopifyGraphql");
 const { generateVariantCombinations, resolveInventoryReductions } = require("./variantGenerator");
 
@@ -145,11 +146,7 @@ async function getBundleFields(productId) {
       };
     }
     console.error(`[getBundleFields] Error obteniendo bundle fields para producto ${productId}:`, error.message);
-    return {
-      productos: [],
-      cantidades: [],
-      opcionesVinculadas: [],
-    };
+    return null;
   }
 }
 
@@ -779,6 +776,11 @@ async function processProduct(id) {
   try {
     const bundleFields = await getBundleFields(id);
 
+    if (!bundleFields) {
+      console.warn(`[processProduct] Error leyendo metafields de ${id}, preservando datos existentes en MongoDB`);
+      return null;
+    }
+
     const productDb = await getProductDBById(id);
 
     const productData = {
@@ -825,6 +827,10 @@ async function getProductDBById(id) {
 
 async function listProducts() {
   return retryWithBackoff(() => listProductsGraphql());
+}
+
+async function getProductsWithZeroPrice() {
+  return retryWithBackoff(() => listProductsWithZeroPriceGraphql());
 }
 
 /**
@@ -1012,6 +1018,7 @@ module.exports = {
   handleProductUp,
   getBundlesDBWithProduct,
   listProducts,
+  getProductsWithZeroPrice,
   reducirInventario,
   aumentarInventario,
   handleOrderCreate,

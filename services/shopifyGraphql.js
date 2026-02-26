@@ -673,6 +673,68 @@ async function getProductCountGraphql() {
   return data?.productsCount?.count ?? 0;
 }
 
+// ─── Productos con precio 0 ───────────────────────────────────────────────────
+
+/**
+ * Obtiene todos los productos de la tienda que tienen al menos una variante con precio 0.
+ * Usa el filtro "variant.price:0" de la API de Shopify.
+ *
+ * @returns {Array} [{id, admin_graphql_api_id, title, zeroVariants: [{id, title, price}]}]
+ */
+async function listProductsWithZeroPriceGraphql() {
+  const allProducts = [];
+  let hasNextPage = true;
+  let after = null;
+
+  const query = `
+    query ProductsWithZeroPrice($first: Int!, $after: String) {
+      products(first: $first, after: $after, query: "variant.price:0") {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          title
+          variants(first: 250) {
+            nodes {
+              id
+              title
+              price
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  while (hasNextPage) {
+    const data = await graphqlRequest(query, { first: 250, after });
+    if (!data || !data.products) break;
+
+    const connection = data.products;
+
+    for (const product of connection.nodes || []) {
+      const zeroVariants = (product.variants?.nodes || []).filter(
+        (v) => parseFloat(v.price) === 0
+      );
+      allProducts.push({
+        id: parseNumericId(product.id),
+        admin_graphql_api_id: product.id,
+        title: product.title,
+        zeroVariants: zeroVariants.map((v) => ({
+          id: parseNumericId(v.id),
+          admin_graphql_api_id: v.id,
+          title: v.title,
+          price: v.price,
+        })),
+      });
+    }
+
+    hasNextPage = connection.pageInfo.hasNextPage;
+    after = connection.pageInfo.endCursor;
+  }
+
+  return allProducts;
+}
+
 // ─── Listar todos los productos (paginado) ────────────────────────────────────
 
 async function listProductsGraphql() {
@@ -727,4 +789,5 @@ module.exports = {
   deleteProductGraphql,
   getProductCountGraphql,
   listProductsGraphql,
+  listProductsWithZeroPriceGraphql,
 };

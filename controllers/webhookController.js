@@ -162,8 +162,37 @@ async function handleOrderCreateRequest(req, res) {
   addToQueue(req, res, "order");
 }
 
+async function handleGetZeroPriceProductsRequest(req, res) {
+  try {
+    const products = await shopifyService.getProductsWithZeroPrice();
+
+    const rows = [];
+    for (const product of products) {
+      for (const variant of product.zeroVariants) {
+        rows.push([
+          product.id,
+          `"${product.title.replace(/"/g, '""')}"`,
+          variant.id,
+          `"${variant.title.replace(/"/g, '""')}"`,
+          variant.price,
+        ].join(","));
+      }
+    }
+
+    const csv = ["product_id,product_title,variant_id,variant_title,price", ...rows].join("\n");
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", 'attachment; filename="productos-precio-cero.csv"');
+    return res.status(200).send(csv);
+  } catch (error) {
+    console.error("Error obteniendo productos con precio 0:", error);
+    return res.status(500).json({ error: "Error obteniendo productos" });
+  }
+}
+
 module.exports = {
   verifyHMAC,
   handleProductUpdateRequest,
   handleOrderCreateRequest,
+  handleGetZeroPriceProductsRequest,
 };
