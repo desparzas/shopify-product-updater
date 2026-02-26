@@ -4,8 +4,10 @@ function extractNumber(title) {
 }
 
 /**
- * Reintenta una función asíncrona con backoff exponencial cuando Shopify
- * devuelve 429 (rate limit) o "Throttled" vía GraphQL (HTTP 200 con error en body).
+ * Reintenta una función asíncrona con backoff exponencial ante:
+ *  - 429 / "Throttled": rate limit de Shopify
+ *  - 5xx: errores transitorios del servidor
+ *  - Errores de red (ECONNRESET, ETIMEDOUT, ECONNREFUSED, etc.)
  * Compatible con axios (status) y node http (statusCode).
  *
  * @param {Function} fn        Función a ejecutar: () => Promise
@@ -18,7 +20,16 @@ async function retryWithBackoff(fn, retries = 15, delay = 1000) {
   } catch (error) {
     const status = error.response?.status ?? error.response?.statusCode;
     const isThrottled = status === 429 || error.message === 'Throttled';
-    if (isThrottled && retries > 0) {
+    const isServerError = status >= 500 && status <= 599;
+    const isNetworkError = !status && (
+      error.code === 'ECONNRESET' ||
+      error.code === 'ETIMEDOUT' ||
+      error.code === 'ECONNREFUSED' ||
+      error.code === 'ENOTFOUND' ||
+      error.code === 'EAI_AGAIN'
+    );
+
+    if ((isThrottled || isServerError || isNetworkError) && retries > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       return retryWithBackoff(fn, retries - 1, delay * 2);
     }

@@ -626,6 +626,10 @@ async function handleProductUp(pId) {
 
       if (validBundle) {
         const bundle = await getProductById(bundleId);
+        if (!bundle) {
+          console.error(`[handleProductUp] No se pudo obtener el bundle ${bundleId} para comparar opciones/variantes. Saltando actualización.`);
+          return;
+        }
         const { options, variants } = bundle;
 
         let updateOptions = false;
@@ -715,6 +719,10 @@ async function handleProductUp(pId) {
       }
       if (validBundle) {
         const bundle = await getProductById(bundleId);
+        if (!bundle) {
+          console.error(`[handleProductUp] No se pudo obtener el bundle ${bundleId} para actualizar inventario. Saltando inventario.`);
+          return;
+        }
         const variants = bundle.variants;
 
         if (variantsOut.length && variantsOut.length === variants.length) {
