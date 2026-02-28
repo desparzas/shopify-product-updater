@@ -180,6 +180,37 @@ async function getProductById(productId) {
   }
 }
 
+async function fetchLinkedProductOptions(opcionesVinculadas, callerName) {
+  const linkedProductIds = opcionesVinculadas.flatMap((ov) => ov.productos);
+  const linkedProductsAll = await processPromisesBatch(
+    linkedProductIds.map((id) => () => getProductById(id))
+  );
+  const linkedProductMap = new Map();
+  linkedProductIds.forEach((id, idx) => {
+    if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
+  });
+
+  return opcionesVinculadas.map((ov) => {
+    const linkedProducts = ov.productos.map((id) => {
+      const p = linkedProductMap.get(id) ?? null;
+
+      if (p && !isSimpleProduct(p)) {
+        console.warn(`[${callerName}] Producto vinculado ${id} ("${p.title}") no es simple (tiene opciones/variantes). Se ignorará.`);
+        return null;
+      }
+
+      return p;
+    });
+
+    return {
+      name: ov.nombre,
+      values: ov.valores,
+      isProductLinked: true,
+      linkedProducts,
+    };
+  });
+}
+
 async function updateBundle(productId) {
   try {
     console.log(`\n========== PROCESANDO BUNDLE ${productId} ==========`);
@@ -358,28 +389,14 @@ async function updateBundle(productId) {
 
     // Agregar opciones vinculadas a productos independientes
     if (opcionesVinculadas.length > 0) {
-      const linkedProductIds = opcionesVinculadas.flatMap((ov) => ov.productos);
-      const linkedProductsAll = await processPromisesBatch(
-        linkedProductIds.map((id) => () => getProductById(id))
-      );
-      const linkedProductMap = new Map();
-      linkedProductIds.forEach((id, idx) => {
-        if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
-      });
-
-      for (const ov of opcionesVinculadas) {
-        const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id) ?? null);
-        optionsOut.push({
-          name: ov.nombre,
-          values: ov.valores,
-          isProductLinked: true,
-          linkedProducts,
-        });
+      const linkedOptions = await fetchLinkedProductOptions(opcionesVinculadas, 'updateBundle');
+      for (const opt of linkedOptions) {
+        optionsOut.push(opt);
         optionsCount += 1;
         if (variantsCount === 0) {
-          variantsCount = ov.valores.length;
+          variantsCount = opt.values.length;
         } else {
-          variantsCount *= ov.valores.length;
+          variantsCount *= opt.values.length;
         }
         if (optionsCount > 3) {
           return {
@@ -580,24 +597,8 @@ async function buildBundleOptionsData(product_id) {
 
   // Agregar opciones vinculadas con sus productos cargados
   if (opcionesVinculadas.length > 0) {
-    const linkedProductIds = opcionesVinculadas.flatMap((ov) => ov.productos);
-    const linkedProductsAll = await processPromisesBatch(
-      linkedProductIds.map((id) => () => getProductById(id))
-    );
-    const linkedProductMap = new Map();
-    linkedProductIds.forEach((id, idx) => {
-      if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
-    });
-
-    for (const ov of opcionesVinculadas) {
-      const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id) ?? null);
-      optionsRaw.push({
-        name: ov.nombre,
-        values: ov.valores,
-        isProductLinked: true,
-        linkedProducts,
-      });
-    }
+    const linkedOptions = await fetchLinkedProductOptions(opcionesVinculadas, 'buildBundleOptionsData');
+    optionsRaw.push(...linkedOptions);
   }
 
   return {
