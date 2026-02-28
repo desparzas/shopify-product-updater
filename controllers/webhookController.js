@@ -1,6 +1,7 @@
 const config = require("../utils/config");
 const crypto = require("crypto");
 const shopifyService = require("../services/shopifyService");
+const { getProductByIdGraphql } = require("../services/shopifyGraphql");
 const { globosNumerados, globosLatex } = require("../utils/products");
 const { extractNumber } = require("../utils/functions");
 const processedProducts = new Set();
@@ -192,9 +193,22 @@ async function handleGetZeroPriceProductsRequest(req, res) {
   }
 }
 
+async function handleGetProductByIdRequest(req, res) {
+  try {
+    const { id } = req.params;
+    const product = await getProductByIdGraphql(parseInt(id, 10));
+    if (!product) return res.status(404).json({ error: "Producto no encontrado" });
+    return res.status(200).json(product);
+  } catch (error) {
+    console.error("Error obteniendo producto:", error);
+    return res.status(500).json({ error: "Error obteniendo producto" });
+  }
+}
+
 module.exports = {
   verifyHMAC,
   handleProductUpdateRequest,
   handleOrderCreateRequest,
   handleGetZeroPriceProductsRequest,
+  handleGetProductByIdRequest,
 };
