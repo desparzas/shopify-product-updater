@@ -190,25 +190,25 @@ async function fetchLinkedProductOptions(opcionesVinculadas, callerName) {
     if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
   });
 
-  return opcionesVinculadas.map((ov) => {
-    const linkedProducts = ov.productos.map((id) => {
+  const options = [];
+  for (const ov of opcionesVinculadas) {
+    const linkedProducts = [];
+    for (const id of ov.productos) {
       const p = linkedProductMap.get(id) ?? null;
-
       if (p && !isSimpleProduct(p)) {
-        console.warn(`[${callerName}] Producto vinculado ${id} ("${p.title}") no es simple (tiene opciones/variantes). Se ignorará.`);
+        console.error(`[${callerName}] Producto vinculado ${id} ("${p.title}") no es simple (tiene opciones/variantes). No se puede procesar el bundle.`);
         return null;
       }
-
-      return p;
-    });
-
-    return {
+      linkedProducts.push(p);
+    }
+    options.push({
       name: ov.nombre,
       values: ov.valores,
       isProductLinked: true,
       linkedProducts,
-    };
-  });
+    });
+  }
+  return options;
 }
 
 async function updateBundle(productId) {
@@ -390,6 +390,15 @@ async function updateBundle(productId) {
     // Agregar opciones vinculadas a productos independientes
     if (opcionesVinculadas.length > 0) {
       const linkedOptions = await fetchLinkedProductOptions(opcionesVinculadas, 'updateBundle');
+      if (!linkedOptions) {
+        return {
+          validBundle: false,
+          error: "Un producto vinculado tiene opciones/variantes. Solo se permiten productos simples.",
+          optionsOut: [],
+          variantsOut: [],
+          isNormal: false,
+        };
+      }
       for (const opt of linkedOptions) {
         optionsOut.push(opt);
         optionsCount += 1;
@@ -598,6 +607,7 @@ async function buildBundleOptionsData(product_id) {
   // Agregar opciones vinculadas con sus productos cargados
   if (opcionesVinculadas.length > 0) {
     const linkedOptions = await fetchLinkedProductOptions(opcionesVinculadas, 'buildBundleOptionsData');
+    if (!linkedOptions) return null;
     optionsRaw.push(...linkedOptions);
   }
 
