@@ -121,14 +121,22 @@ async function getBundleFields(productId) {
     }
     console.log(`[getBundleFields] Cantidades: ${JSON.stringify(listaCantidad)}`);
 
-    const opcionesVinculadasMetafield = metafields.find(
-      (metafield) =>
-        metafield.key === "opciones_vinculadas" &&
-        metafield.namespace === "custom"
-    );
-    const opcionesVinculadas = opcionesVinculadasMetafield
-      ? (JSON.parse(opcionesVinculadasMetafield.value).data ?? [])
-      : [];
+    let opcionesVinculadas = [];
+    const nombreMf = metafields.find(m => m.key === 'opcion_vinculada_nombre' && m.namespace === 'custom');
+    const etiquetasMf = metafields.find(m => m.key === 'opcion_vinculada_etiquetas' && m.namespace === 'custom');
+    const productosMf = metafields.find(m => m.key === 'opcion_vinculada_productos' && m.namespace === 'custom');
+
+    if (nombreMf && etiquetasMf && productosMf) {
+      const productoIds = JSON.parse(productosMf.value)
+        .map(gid => parseInt(gid.match(/\/(\d+)$/)[1], 10));
+      const etiquetas = JSON.parse(etiquetasMf.value);
+
+      if (etiquetas.length === productoIds.length) {
+        opcionesVinculadas = [{ nombre: nombreMf.value, valores: etiquetas, productos: productoIds }];
+      } else {
+        console.warn(`[getBundleFields] Mismatch etiquetas(${etiquetas.length}) vs productos(${productoIds.length})`);
+      }
+    }
 
     console.log(`[getBundleFields] Bundle fields retornados: ${listaProductos.length} productos, ${opcionesVinculadas.length} opciones vinculadas`);
     return {
@@ -170,6 +178,37 @@ async function getProductById(productId) {
     );
     return null;
   }
+}
+
+async function fetchLinkedProductOptions(opcionesVinculadas, callerName) {
+  const linkedProductIds = opcionesVinculadas.flatMap((ov) => ov.productos);
+  const linkedProductsAll = await processPromisesBatch(
+    linkedProductIds.map((id) => () => getProductById(id))
+  );
+  const linkedProductMap = new Map();
+  linkedProductIds.forEach((id, idx) => {
+    if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
+  });
+
+  const options = [];
+  for (const ov of opcionesVinculadas) {
+    const linkedProducts = [];
+    for (const id of ov.productos) {
+      const p = linkedProductMap.get(id) ?? null;
+      if (p && !isSimpleProduct(p)) {
+        console.error(`[${callerName}] Producto vinculado ${id} ("${p.title}") no es simple (tiene opciones/variantes). No se puede procesar el bundle.`);
+        return null;
+      }
+      linkedProducts.push(p);
+    }
+    options.push({
+      name: ov.nombre,
+      values: ov.valores,
+      isProductLinked: true,
+      linkedProducts,
+    });
+  }
+  return options;
 }
 
 async function updateBundle(productId) {
@@ -350,28 +389,23 @@ async function updateBundle(productId) {
 
     // Agregar opciones vinculadas a productos independientes
     if (opcionesVinculadas.length > 0) {
-      const linkedProductIds = opcionesVinculadas.flatMap((ov) => ov.productos);
-      const linkedProductsAll = await processPromisesBatch(
-        linkedProductIds.map((id) => () => getProductById(id))
-      );
-      const linkedProductMap = new Map();
-      linkedProductIds.forEach((id, idx) => {
-        if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
-      });
-
-      for (const ov of opcionesVinculadas) {
-        const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id)).filter(Boolean);
-        optionsOut.push({
-          name: ov.nombre,
-          values: ov.valores,
-          isProductLinked: true,
-          linkedProducts,
-        });
+      const linkedOptions = await fetchLinkedProductOptions(opcionesVinculadas, 'updateBundle');
+      if (!linkedOptions) {
+        return {
+          validBundle: false,
+          error: "Un producto vinculado tiene opciones/variantes. Solo se permiten productos simples.",
+          optionsOut: [],
+          variantsOut: [],
+          isNormal: false,
+        };
+      }
+      for (const opt of linkedOptions) {
+        optionsOut.push(opt);
         optionsCount += 1;
         if (variantsCount === 0) {
-          variantsCount = ov.valores.length;
+          variantsCount = opt.values.length;
         } else {
-          variantsCount *= ov.valores.length;
+          variantsCount *= opt.values.length;
         }
         if (optionsCount > 3) {
           return {
@@ -466,6 +500,7 @@ async function isValidBundle(productId) {
 
     for (let i = 0; i < productosBundle.length; i++) {
       const product = productosBundle[i];
+      if (!product) continue;
       const cantidad = cantidades[i];
       const { options, variants, title } = product;
 
@@ -539,8 +574,9 @@ async function processPromisesBatch(promises, batchSize = 8) {
  * @returns {{ optionsOut, productosBundle, cantidades, productos } | null}
  */
 async function buildBundleOptionsData(product_id) {
-  const { productos, cantidades, opcionesVinculadas } = await getBundleFields(product_id);
-  if (!productos.length) return null;
+  const bundleFields = await getBundleFields(product_id);
+  if (!bundleFields || !bundleFields.productos.length) return null;
+  const { productos, cantidades, opcionesVinculadas } = bundleFields;
 
   const productosBundle = await processPromisesBatch(
     productos.map((id) => () => getProductById(id))
@@ -570,24 +606,9 @@ async function buildBundleOptionsData(product_id) {
 
   // Agregar opciones vinculadas con sus productos cargados
   if (opcionesVinculadas.length > 0) {
-    const linkedProductIds = opcionesVinculadas.flatMap((ov) => ov.productos);
-    const linkedProductsAll = await processPromisesBatch(
-      linkedProductIds.map((id) => () => getProductById(id))
-    );
-    const linkedProductMap = new Map();
-    linkedProductIds.forEach((id, idx) => {
-      if (linkedProductsAll[idx]) linkedProductMap.set(id, linkedProductsAll[idx]);
-    });
-
-    for (const ov of opcionesVinculadas) {
-      const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id)).filter(Boolean);
-      optionsRaw.push({
-        name: ov.nombre,
-        values: ov.valores,
-        isProductLinked: true,
-        linkedProducts,
-      });
-    }
+    const linkedOptions = await fetchLinkedProductOptions(opcionesVinculadas, 'buildBundleOptionsData');
+    if (!linkedOptions) return null;
+    optionsRaw.push(...linkedOptions);
   }
 
   return {
