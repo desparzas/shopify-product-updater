@@ -956,21 +956,32 @@ async function setInventoryLevel(variantId, quantity) {
   }
 }
 
-async function recursiveProductDiscount(product_id, variant_id, quantity) {
+async function recursiveProductDiscount(product_id, variant_id, quantity, depth = 0) {
+  const indent = '  '.repeat(depth);
+
   const productData = await getProductById(product_id);
   if (!productData) {
-    console.log(`No se encontró el producto con id ${product_id}`);
+    console.log(`${indent}[descuento] Producto ${product_id} no encontrado, se omite`);
     return;
   }
 
+  console.log(`\n${indent}[descuento] "${productData.title}" (variant: ${variant_id}, qty: ${quantity})`);
+
   if (!(await isValidBundle(product_id))) {
-    console.log(`El producto ${productData.title} no es un bundle`);
+    console.log(`${indent}[descuento] "${productData.title}" no es un bundle, se omite`);
     return;
   }
 
   const variantRecibida = productData.variants.find((v) => v.id === variant_id);
+  if (!variantRecibida) {
+    console.warn(`${indent}[descuento] Variante ${variant_id} no encontrada en "${productData.title}"`);
+  }
+
   const bundleData = await buildBundleOptionsData(product_id);
-  if (!bundleData) return;
+  if (!bundleData) {
+    console.error(`${indent}[descuento] No se pudo obtener datos del bundle "${productData.title}"`);
+    return;
+  }
 
   const { optionsOut, productosBundle, cantidades } = bundleData;
   const updateProductsPromises = [];
@@ -978,27 +989,29 @@ async function recursiveProductDiscount(product_id, variant_id, quantity) {
 
   async function schedule(product, variant, c) {
     if (await isValidBundle(product.id)) {
-      processBundlesPromises.push(() => recursiveProductDiscount(product.id, variant.id, c));
+      console.log(`${indent}  → sub-bundle: "${product.title}" (variant: ${variant.id}, qty: ${c})`);
+      processBundlesPromises.push(() => recursiveProductDiscount(product.id, variant.id, c, depth + 1));
     } else if (variant.inventory_management === 'shopify') {
+      console.log(`${indent}  → inventario: "${product.title}" variant ${variant.id} -${c}`);
       updateProductsPromises.push(() => reducirInventario(variant.id, c));
+    } else {
+      console.log(`${indent}  → "${product.title}" sin gestión de inventario, se omite`);
     }
   }
 
-  console.log('-'.repeat(50));
-
   if (isSimpleProduct(productData)) {
-    console.log(`El producto ${productData.title} es un bundle simple`);
+    console.log(`${indent}[descuento] Bundle simple con ${productosBundle.length} componente(s)`);
     for (let i = 0; i < productosBundle.length; i++) {
       const p = productosBundle[i];
       if (p) await schedule(p, p.variants[0], cantidades[i] * quantity);
     }
   } else {
-    console.log(`El producto ${productData.title} es un bundle con opciones`);
     const soldValues = [
       variantRecibida?.option1 ?? null,
       variantRecibida?.option2 ?? null,
       variantRecibida?.option3 ?? null,
     ];
+    console.log(`${indent}[descuento] Bundle con opciones, variante vendida: [${soldValues.filter(Boolean).join(', ')}]`);
     // Componentes no-simples: identificar variante exacta por copia usando metadata
     for (const { product, variant } of resolveInventoryReductions(optionsOut, productosBundle, soldValues)) {
       await schedule(product, variant, quantity);
@@ -1010,27 +1023,29 @@ async function recursiveProductDiscount(product_id, variant_id, quantity) {
     }
   }
 
-  console.log('-'.repeat(50));
-
-  if (updateProductsPromises.length !== 0) {
-    console.log(`Procesando promesas de productos del producto ${productData.title}`);
+  if (updateProductsPromises.length > 0) {
+    console.log(`${indent}[descuento] Reduciendo inventario de ${updateProductsPromises.length} producto(s)...`);
     await processPromisesBatch(updateProductsPromises);
   }
 
-  if (processBundlesPromises.length !== 0) {
-    console.log(`Procesando promesas de bundles del producto ${productData.title}`);
+  if (processBundlesPromises.length > 0) {
+    console.log(`${indent}[descuento] Procesando ${processBundlesPromises.length} sub-bundle(s)...`);
     await processPromisesBatch(processBundlesPromises);
   }
 }
 
 async function handleOrderCreate(orderData) {
   try {
-    const { line_items } = orderData;
+    const { id: orderId, line_items } = orderData;
+    console.log(`\n========== PROCESANDO ORDEN ${orderId} (${line_items.length} items) ==========`);
 
     for (const lineItem of line_items) {
       const { product_id, variant_id, quantity, title } = lineItem;
+      console.log(`[orden] → "${title}" (product: ${product_id}, variant: ${variant_id}, qty: ${quantity})`);
       await recursiveProductDiscount(product_id, variant_id, quantity);
     }
+
+    console.log(`========== ORDEN ${orderId} PROCESADA ==========\n`);
   } catch (error) {
     console.error("Error procesando la orden:", error);
   }
