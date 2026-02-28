@@ -121,14 +121,22 @@ async function getBundleFields(productId) {
     }
     console.log(`[getBundleFields] Cantidades: ${JSON.stringify(listaCantidad)}`);
 
-    const opcionesVinculadasMetafield = metafields.find(
-      (metafield) =>
-        metafield.key === "opciones_vinculadas" &&
-        metafield.namespace === "custom"
-    );
-    const opcionesVinculadas = opcionesVinculadasMetafield
-      ? (JSON.parse(opcionesVinculadasMetafield.value).data ?? [])
-      : [];
+    let opcionesVinculadas = [];
+    const nombreMf = metafields.find(m => m.key === 'opcion_vinculada_nombre' && m.namespace === 'custom');
+    const etiquetasMf = metafields.find(m => m.key === 'opcion_vinculada_etiquetas' && m.namespace === 'custom');
+    const productosMf = metafields.find(m => m.key === 'opcion_vinculada_productos' && m.namespace === 'custom');
+
+    if (nombreMf && etiquetasMf && productosMf) {
+      const productoIds = JSON.parse(productosMf.value)
+        .map(gid => parseInt(gid.match(/\/(\d+)$/)[1], 10));
+      const etiquetas = JSON.parse(etiquetasMf.value);
+
+      if (etiquetas.length === productoIds.length) {
+        opcionesVinculadas = [{ nombre: nombreMf.value, valores: etiquetas, productos: productoIds }];
+      } else {
+        console.warn(`[getBundleFields] Mismatch etiquetas(${etiquetas.length}) vs productos(${productoIds.length})`);
+      }
+    }
 
     console.log(`[getBundleFields] Bundle fields retornados: ${listaProductos.length} productos, ${opcionesVinculadas.length} opciones vinculadas`);
     return {
@@ -360,7 +368,7 @@ async function updateBundle(productId) {
       });
 
       for (const ov of opcionesVinculadas) {
-        const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id)).filter(Boolean);
+        const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id) ?? null);
         optionsOut.push({
           name: ov.nombre,
           values: ov.valores,
@@ -466,6 +474,7 @@ async function isValidBundle(productId) {
 
     for (let i = 0; i < productosBundle.length; i++) {
       const product = productosBundle[i];
+      if (!product) continue;
       const cantidad = cantidades[i];
       const { options, variants, title } = product;
 
@@ -539,8 +548,9 @@ async function processPromisesBatch(promises, batchSize = 8) {
  * @returns {{ optionsOut, productosBundle, cantidades, productos } | null}
  */
 async function buildBundleOptionsData(product_id) {
-  const { productos, cantidades, opcionesVinculadas } = await getBundleFields(product_id);
-  if (!productos.length) return null;
+  const bundleFields = await getBundleFields(product_id);
+  if (!bundleFields || !bundleFields.productos.length) return null;
+  const { productos, cantidades, opcionesVinculadas } = bundleFields;
 
   const productosBundle = await processPromisesBatch(
     productos.map((id) => () => getProductById(id))
@@ -580,7 +590,7 @@ async function buildBundleOptionsData(product_id) {
     });
 
     for (const ov of opcionesVinculadas) {
-      const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id)).filter(Boolean);
+      const linkedProducts = ov.productos.map((id) => linkedProductMap.get(id) ?? null);
       optionsRaw.push({
         name: ov.nombre,
         values: ov.valores,

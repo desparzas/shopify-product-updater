@@ -44,7 +44,9 @@ async function processQueue() {
     }
   } catch (error) {
     console.error("Error processing webhook:", error);
-    res.status(500).send("Internal Server Error");
+    if (!res.headersSent) {
+      res.status(500).send("Internal Server Error");
+    }
   }
 
   processing = false;
