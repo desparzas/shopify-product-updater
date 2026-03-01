@@ -78,6 +78,7 @@ async function getBundleFields(productId) {
         productos: [],
         cantidades: [],
         opcionesVinculadas: [],
+        opcionColor: null,
       };
     }
     console.log(`[getBundleFields] Encontrado 'lista_de_productos': ${listaProductosMetafield.value}`);
@@ -138,11 +139,35 @@ async function getBundleFields(productId) {
       }
     }
 
-    console.log(`[getBundleFields] Bundle fields retornados: ${listaProductos.length} productos, ${opcionesVinculadas.length} opciones vinculadas`);
+    let opcionColor = null;
+    const colorNombreMf = metafields.find(m => m.key === 'opcion_color_nombre' && m.namespace === 'custom');
+    const colorEtiquetasMf = metafields.find(m => m.key === 'opcion_color_etiquetas' && m.namespace === 'custom');
+    const colorProductosMf = metafields.find(m => m.key === 'opcion_color_productos' && m.namespace === 'custom');
+    const colorOpcionesNumeroMf = metafields.find(m => m.key === 'opcion_color_opciones_numero' && m.namespace === 'custom');
+
+    if (colorNombreMf && colorEtiquetasMf && colorProductosMf && colorOpcionesNumeroMf) {
+      const colorProductIds = JSON.parse(colorProductosMf.value)
+        .map(gid => parseInt(gid.match(/\/(\d+)$/)[1], 10));
+      const colorEtiquetas = JSON.parse(colorEtiquetasMf.value);
+      const colorOpcionesNumero = JSON.parse(colorOpcionesNumeroMf.value);
+      if (colorEtiquetas.length === colorProductIds.length) {
+        opcionColor = {
+          nombre: colorNombreMf.value,
+          valores: colorEtiquetas,
+          productos: colorProductIds,
+          opcionesNumero: colorOpcionesNumero,
+        };
+      } else {
+        console.warn(`[getBundleFields] Mismatch color etiquetas(${colorEtiquetas.length}) vs productos(${colorProductIds.length})`);
+      }
+    }
+
+    console.log(`[getBundleFields] Bundle fields retornados: ${listaProductos.length} productos, ${opcionesVinculadas.length} opciones vinculadas, ${opcionColor ? 'con opcionColor' : 'sin opcionColor'}`);
     return {
       productos: listaProductos,
       cantidades: listaCantidad,
       opcionesVinculadas,
+      opcionColor,
     };
   } catch (error) {
     if (error.response && error.response.statusCode === 404) {
@@ -151,6 +176,7 @@ async function getBundleFields(productId) {
         productos: [],
         cantidades: [],
         opcionesVinculadas: [],
+        opcionColor: null,
       };
     }
     console.error(`[getBundleFields] Error obteniendo bundle fields para producto ${productId}:`, error.message);
@@ -240,10 +266,10 @@ async function updateBundle(productId) {
       };
     }
 
-    const { productos, cantidades, opcionesVinculadas } = bundleFields;
-    console.log(`[updateBundle] Bundle fields: ${productos.length} productos, cantidades: ${JSON.stringify(cantidades)}, ${opcionesVinculadas.length} opciones vinculadas`);
+    const { productos, cantidades, opcionesVinculadas, opcionColor } = bundleFields;
+    console.log(`[updateBundle] Bundle fields: ${productos.length} productos, cantidades: ${JSON.stringify(cantidades)}, ${opcionesVinculadas.length} opciones vinculadas, ${opcionColor ? 'con opcionColor' : 'sin opcionColor'}`);
 
-    if (productos.length === 0) {
+    if (productos.length === 0 && !opcionColor) {
       console.log(`[updateBundle] El bundle no tiene productos configurados (productos array vacío)`);
       return {
         validBundle: false,
@@ -283,7 +309,7 @@ async function updateBundle(productId) {
     }
     console.log(`[updateBundle] All simple products: ${allSimple}`);
 
-    if (allSimple && opcionesVinculadas.length === 0) {
+    if (allSimple && opcionesVinculadas.length === 0 && !opcionColor) {
       let precioTotal = 0;
       let minInv = Infinity;
       for (let i = 0; i < productosBundle.length; i++) {
@@ -431,6 +457,94 @@ async function updateBundle(productId) {
       }
     }
 
+    // Agregar opciones de color (número × color cross-variant)
+    if (opcionColor) {
+      const colorProductsData = await processPromisesBatch(
+        opcionColor.productos.map(id => () => getProductById(id))
+      );
+      const firstColorProduct = colorProductsData.find(p => p != null);
+      if (!firstColorProduct) {
+        return {
+          validBundle: false,
+          error: "No se pudo obtener ningún producto de color configurado",
+          optionsOut: [],
+          variantsOut: [],
+          isNormal: false,
+        };
+      }
+      const numValues = firstColorProduct.options[0].values;
+
+      for (const numOpName of opcionColor.opcionesNumero) {
+        optionsOut.push({
+          name: numOpName,
+          values: numValues,
+          isColorNumero: true,
+          colorOptionName: opcionColor.nombre,
+        });
+        optionsCount += 1;
+        if (variantsCount === 0) {
+          variantsCount = numValues.length;
+        } else {
+          variantsCount *= numValues.length;
+        }
+        if (optionsCount > 3) {
+          return {
+            validBundle: false,
+            error: "El bundle tiene más de 3 opciones (límite de Shopify)",
+            optionsOut: [],
+            variantsOut: [],
+            isNormal: false,
+          };
+        }
+        if (variantsCount > 1500) {
+          console.warn(`[updateBundle] ⚠️ Bundle ${productId} generaría ${variantsCount} variantes (>1500, acercándose al límite de 2048)`);
+        }
+        if (variantsCount > 2048) {
+          return {
+            validBundle: false,
+            error: `El bundle tiene más de 2048 variantes (${variantsCount})`,
+            optionsOut: [],
+            variantsOut: [],
+            isNormal: false,
+          };
+        }
+      }
+
+      optionsOut.push({
+        name: opcionColor.nombre,
+        values: opcionColor.valores,
+        isColorLinked: true,
+        colorProducts: colorProductsData,
+      });
+      optionsCount += 1;
+      if (variantsCount === 0) {
+        variantsCount = opcionColor.valores.length;
+      } else {
+        variantsCount *= opcionColor.valores.length;
+      }
+      if (optionsCount > 3) {
+        return {
+          validBundle: false,
+          error: "El bundle tiene más de 3 opciones (límite de Shopify)",
+          optionsOut: [],
+          variantsOut: [],
+          isNormal: false,
+        };
+      }
+      if (variantsCount > 1500) {
+        console.warn(`[updateBundle] ⚠️ Bundle ${productId} generaría ${variantsCount} variantes (>1500, acercándose al límite de 2048)`);
+      }
+      if (variantsCount > 2048) {
+        return {
+          validBundle: false,
+          error: `El bundle tiene más de 2048 variantes (${variantsCount})`,
+          optionsOut: [],
+          variantsOut: [],
+          isNormal: false,
+        };
+      }
+    }
+
     // console.log("Options", optionsOut);
 
     optionsOut = makeTitlesUnique(optionsOut);
@@ -484,9 +598,9 @@ async function isValidBundle(productId) {
       return false;
     }
 
-    const { productos, cantidades } = bundleFields;
+    const { productos, cantidades, opcionColor } = bundleFields;
 
-    if (productos.length === 0) {
+    if (productos.length === 0 && !opcionColor) {
       return false;
     }
 
@@ -575,8 +689,8 @@ async function processPromisesBatch(promises, batchSize = 8) {
  */
 async function buildBundleOptionsData(product_id) {
   const bundleFields = await getBundleFields(product_id);
-  if (!bundleFields || !bundleFields.productos.length) return null;
-  const { productos, cantidades, opcionesVinculadas } = bundleFields;
+  if (!bundleFields || (!bundleFields.productos.length && !bundleFields.opcionColor)) return null;
+  const { productos, cantidades, opcionesVinculadas, opcionColor } = bundleFields;
 
   const productosBundle = await processPromisesBatch(
     productos.map((id) => () => getProductById(id))
@@ -609,6 +723,34 @@ async function buildBundleOptionsData(product_id) {
     const linkedOptions = await fetchLinkedProductOptions(opcionesVinculadas, 'buildBundleOptionsData');
     if (!linkedOptions) return null;
     optionsRaw.push(...linkedOptions);
+  }
+
+  // Agregar opciones de color (número × color cross-variant)
+  if (opcionColor) {
+    const colorProductsData = await processPromisesBatch(
+      opcionColor.productos.map(id => () => getProductById(id))
+    );
+    const firstColorProduct = colorProductsData.find(p => p != null);
+    if (!firstColorProduct) {
+      console.error('[buildBundleOptionsData] No se pudo obtener ningún producto de color');
+      return null;
+    }
+    const numValues = firstColorProduct.options[0].values;
+
+    for (const numOpName of opcionColor.opcionesNumero) {
+      optionsRaw.push({
+        name: numOpName,
+        values: numValues,
+        isColorNumero: true,
+        colorOptionName: opcionColor.nombre,
+      });
+    }
+    optionsRaw.push({
+      name: opcionColor.nombre,
+      values: opcionColor.valores,
+      isColorLinked: true,
+      colorProducts: colorProductsData,
+    });
   }
 
   return {
@@ -815,7 +957,10 @@ async function processProduct(id) {
     const productData = {
       productId: id,
       ...bundleFields,
-      productosVinculados: (bundleFields.opcionesVinculadas || []).flatMap((ov) => ov.productos),
+      productosVinculados: [
+        ...(bundleFields.opcionesVinculadas || []).flatMap((ov) => ov.productos),
+        ...(bundleFields.opcionColor ? bundleFields.opcionColor.productos : []),
+      ],
     };
 
     let pReturn = null;
@@ -1020,6 +1165,35 @@ async function recursiveProductDiscount(product_id, variant_id, quantity, depth 
     for (let i = 0; i < productosBundle.length; i++) {
       const p = productosBundle[i];
       if (p && isSimpleProduct(p)) await schedule(p, p.variants[0], cantidades[i] * quantity);
+    }
+
+    // Opciones de color: por cada opción de número, descontar la variante correspondiente del producto de color
+    const colorOptIdx = optionsOut.findIndex(o => o.isColorLinked);
+    if (colorOptIdx !== -1) {
+      const colorOpt = optionsOut[colorOptIdx];
+      const soldColorValue = soldValues[colorOptIdx];
+      if (soldColorValue != null) {
+        const colorProductIdx = colorOpt.values.indexOf(soldColorValue);
+        const colorProduct = colorOpt.colorProducts?.[colorProductIdx];
+        if (colorProduct) {
+          for (let i = 0; i < optionsOut.length; i++) {
+            if (!optionsOut[i].isColorNumero) continue;
+            const soldNumValue = soldValues[i];
+            if (soldNumValue == null) continue;
+            const colorVariant = colorProduct.variants.find(v =>
+              v.option1 === soldNumValue || v.option2 === soldNumValue || v.option3 === soldNumValue
+            );
+            if (!colorVariant) {
+              console.warn(`${indent}[descuento] Variante "${soldNumValue}" no encontrada en "${colorProduct.title}"`);
+              continue;
+            }
+            console.log(`${indent}  → color-numero: "${colorProduct.title}" variante "${soldNumValue}" (variant: ${colorVariant.id}, qty: ${quantity})`);
+            await schedule(colorProduct, colorVariant, quantity);
+          }
+        } else {
+          console.warn(`${indent}[descuento] Producto de color para "${soldColorValue}" no encontrado`);
+        }
+      }
     }
   }
 

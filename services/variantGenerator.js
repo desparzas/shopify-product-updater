@@ -113,7 +113,7 @@ function generateVariantCombinations(optionsOut, productosBundle, cantidades) {
 
     for (let i = 0; i < optionsOut.length; i++) {
       const opt = optionsOut[i];
-      if (opt.isProductLinked) continue;
+      if (opt.isProductLinked || opt.isColorLinked || opt.isColorNumero) continue;
       const key = `${opt.productOriginalId}:${opt.productCopyIndex}`;
       if (!productCopyGroups.has(key)) {
         productCopyGroups.set(key, {
@@ -145,6 +145,30 @@ function generateVariantCombinations(optionsOut, productosBundle, cantidades) {
         const inv = variant.inventory_quantity;
         if (inv < minVar) {
           minVar = Math.floor(inv);
+        }
+      }
+    }
+
+    // Precio e inventario de opciones de color (número × color cross-variant)
+    const colorOptIdx = optionsOut.findIndex(o => o.isColorLinked);
+    if (colorOptIdx !== -1) {
+      const colorOpt = optionsOut[colorOptIdx];
+      const colorValue = optionValues[colorOptIdx];
+      const colorIdx = colorOpt.values.indexOf(colorValue);
+      const colorProduct = colorOpt.colorProducts?.[colorIdx];
+      if (colorProduct) {
+        for (let i = 0; i < optionsOut.length; i++) {
+          if (!optionsOut[i].isColorNumero) continue;
+          const numValue = optionValues[i];
+          const colorVariant = colorProduct.variants.find(v =>
+            v.option1 === numValue || v.option2 === numValue || v.option3 === numValue
+          );
+          if (!colorVariant) continue;
+          priceTotal += parseFloat(colorVariant.price);
+          if (colorVariant.inventory_management === 'shopify') {
+            const inv = colorVariant.inventory_quantity;
+            if (inv < minVar) minVar = Math.floor(inv);
+          }
         }
       }
     }
@@ -204,7 +228,7 @@ function resolveInventoryReductions(optionsOutWithMeta, productosBundle, soldOpt
 
   for (let i = 0; i < optionsOutWithMeta.length; i++) {
     const opt = optionsOutWithMeta[i];
-    if (opt.isProductLinked) continue;
+    if (opt.isProductLinked || opt.isColorLinked || opt.isColorNumero) continue;
     const soldValue = soldOptionValues[i] ?? null;
     if (soldValue == null) continue;
 
