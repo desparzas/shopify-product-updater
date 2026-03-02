@@ -156,6 +156,9 @@ function generateVariantCombinations(optionsOut, productosBundle, cantidades) {
       const colorValue = optionValues[colorOptIdx];
       const colorIdx = colorOpt.values.indexOf(colorValue);
       const colorProduct = colorOpt.colorProducts?.[colorIdx];
+      if (!colorProduct) {
+        console.warn(`[variantGenerator] Producto de color para "${colorValue}" (idx=${colorIdx}) es null — precio e inventario de esa combinación serán 0`);
+      }
       if (colorProduct) {
         for (let i = 0; i < optionsOut.length; i++) {
           if (!optionsOut[i].isColorNumero) continue;
