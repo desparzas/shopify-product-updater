@@ -144,18 +144,28 @@ async function getBundleFields(productId) {
     const colorEtiquetasMf = metafields.find(m => m.key === 'numero_color_etiquetas' && m.namespace === 'custom');
     const colorProductosMf = metafields.find(m => m.key === 'numero_color_productos' && m.namespace === 'custom');
     const colorOpcionesNumeroMf = metafields.find(m => m.key === 'numero_color_parametros' && m.namespace === 'custom');
+    const colorHexcodesMf = metafields.find(m => m.key === 'numero_color_hexcodes' && m.namespace === 'custom');
 
     if (colorNombreMf && colorEtiquetasMf && colorProductosMf && colorOpcionesNumeroMf) {
+      console.log(`[getBundleFields] numero_color_productos raw: ${colorProductosMf.value}`);
+      console.log(`[getBundleFields] numero_color_etiquetas raw: ${colorEtiquetasMf.value}`);
+      console.log(`[getBundleFields] numero_color_parametros raw: ${colorOpcionesNumeroMf.value}`);
       const colorProductIds = JSON.parse(colorProductosMf.value)
         .map(gid => parseInt(gid.match(/\/(\d+)$/)[1], 10));
       const colorEtiquetas = JSON.parse(colorEtiquetasMf.value);
       const colorOpcionesNumero = JSON.parse(colorOpcionesNumeroMf.value);
+      const colorHexcodes = colorHexcodesMf ? JSON.parse(colorHexcodesMf.value) : null;
+      console.log(`[getBundleFields] colorProductIds: ${JSON.stringify(colorProductIds)}`);
+      console.log(`[getBundleFields] colorEtiquetas: ${JSON.stringify(colorEtiquetas)}`);
+      console.log(`[getBundleFields] colorOpcionesNumero: ${JSON.stringify(colorOpcionesNumero)}`);
+      if (colorHexcodes) console.log(`[getBundleFields] colorHexcodes: ${JSON.stringify(colorHexcodes)}`);
       if (colorEtiquetas.length === colorProductIds.length) {
         opcionColor = {
           nombre: colorNombreMf.value,
           valores: colorEtiquetas,
           productos: colorProductIds,
           opcionesNumero: colorOpcionesNumero,
+          hexcodes: colorHexcodes,
         };
       } else {
         console.warn(`[getBundleFields] Mismatch color etiquetas(${colorEtiquetas.length}) vs productos(${colorProductIds.length})`);
@@ -459,9 +469,13 @@ async function updateBundle(productId) {
 
     // Agregar opciones de color (número × color cross-variant)
     if (opcionColor) {
+      console.log(`[updateBundle] opcionColor: nombre="${opcionColor.nombre}", valores=${JSON.stringify(opcionColor.valores)}, productos=${JSON.stringify(opcionColor.productos)}, parametros=${JSON.stringify(opcionColor.opcionesNumero)}`);
       const colorProductsData = await processPromisesBatch(
         opcionColor.productos.map(id => () => getProductById(id))
       );
+      colorProductsData.forEach((p, i) => {
+        console.log(`[updateBundle] colorProduct[${i}] (id=${opcionColor.productos[i]}): ${p ? `"${p.title}" - ${p.variants.length} variantes, options: ${JSON.stringify(p.options.map(o => o.name))}` : 'null (no encontrado)'}`);
+      });
       const firstColorProduct = colorProductsData.find(p => p != null);
       if (!firstColorProduct) {
         return {
@@ -473,6 +487,7 @@ async function updateBundle(productId) {
         };
       }
       const numValues = firstColorProduct.options[0].values;
+      console.log(`[updateBundle] numValues derivados de "${firstColorProduct.title}" options[0] ("${firstColorProduct.options[0].name}"): ${JSON.stringify(numValues)}`);
 
       for (const numOpName of opcionColor.opcionesNumero) {
         optionsOut.push({
@@ -515,6 +530,7 @@ async function updateBundle(productId) {
         values: opcionColor.valores,
         isColorLinked: true,
         colorProducts: colorProductsData,
+        hexcodes: opcionColor.hexcodes ?? null,
       });
       optionsCount += 1;
       if (variantsCount === 0) {
@@ -750,6 +766,7 @@ async function buildBundleOptionsData(product_id) {
       values: opcionColor.valores,
       isColorLinked: true,
       colorProducts: colorProductsData,
+      hexcodes: opcionColor.hexcodes ?? null,
     });
   }
 
