@@ -4,6 +4,7 @@ const {
   handleProductUpdateRequest,
   handleOrderCreateRequest,
   handleGetZeroPriceProductsRequest,
+  handleGetProductByIdRequest,
 } = require("../controllers/webhookController");
 
 const router = express.Router();
@@ -16,5 +17,8 @@ router.post("/orders/create", verifyHMAC, handleOrderCreateRequest);
 
 // Ruta de utilidad: productos con precio 0
 router.get("/products/zero-price", handleGetZeroPriceProductsRequest);
+
+// Ruta de utilidad: obtener producto por ID
+router.get("/products/:id", handleGetProductByIdRequest);
 
 module.exports = router;
