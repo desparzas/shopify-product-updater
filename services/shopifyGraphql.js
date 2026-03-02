@@ -273,10 +273,13 @@ async function updateProductGraphql(productId, optionsOut, variantsOut) {
     ? productId
     : buildProductGid(productId);
 
-  // productOptions: [{name, values: [{name}]}]
+  // productOptions: [{name, values: [{name, swatch?}]}]
   const productOptions = optionsOut.map((opt) => ({
     name: opt.name,
-    values: opt.values.map((v) => ({ name: v })),
+    values: opt.values.map((v, i) => ({
+      name: v,
+      ...(opt.hexcodes?.[i] ? { swatch: { color: opt.hexcodes[i] } } : {}),
+    })),
   }));
 
   // variants: [{optionValues: [{optionName, name}], price}]

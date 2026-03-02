@@ -144,6 +144,7 @@ async function getBundleFields(productId) {
     const colorEtiquetasMf = metafields.find(m => m.key === 'numero_color_etiquetas' && m.namespace === 'custom');
     const colorProductosMf = metafields.find(m => m.key === 'numero_color_productos' && m.namespace === 'custom');
     const colorOpcionesNumeroMf = metafields.find(m => m.key === 'numero_color_parametros' && m.namespace === 'custom');
+    const colorHexcodesMf = metafields.find(m => m.key === 'numero_color_hexcodes' && m.namespace === 'custom');
 
     if (colorNombreMf && colorEtiquetasMf && colorProductosMf && colorOpcionesNumeroMf) {
       console.log(`[getBundleFields] numero_color_productos raw: ${colorProductosMf.value}`);
@@ -153,15 +154,18 @@ async function getBundleFields(productId) {
         .map(gid => parseInt(gid.match(/\/(\d+)$/)[1], 10));
       const colorEtiquetas = JSON.parse(colorEtiquetasMf.value);
       const colorOpcionesNumero = JSON.parse(colorOpcionesNumeroMf.value);
+      const colorHexcodes = colorHexcodesMf ? JSON.parse(colorHexcodesMf.value) : null;
       console.log(`[getBundleFields] colorProductIds: ${JSON.stringify(colorProductIds)}`);
       console.log(`[getBundleFields] colorEtiquetas: ${JSON.stringify(colorEtiquetas)}`);
       console.log(`[getBundleFields] colorOpcionesNumero: ${JSON.stringify(colorOpcionesNumero)}`);
+      if (colorHexcodes) console.log(`[getBundleFields] colorHexcodes: ${JSON.stringify(colorHexcodes)}`);
       if (colorEtiquetas.length === colorProductIds.length) {
         opcionColor = {
           nombre: colorNombreMf.value,
           valores: colorEtiquetas,
           productos: colorProductIds,
           opcionesNumero: colorOpcionesNumero,
+          hexcodes: colorHexcodes,
         };
       } else {
         console.warn(`[getBundleFields] Mismatch color etiquetas(${colorEtiquetas.length}) vs productos(${colorProductIds.length})`);
@@ -526,6 +530,7 @@ async function updateBundle(productId) {
         values: opcionColor.valores,
         isColorLinked: true,
         colorProducts: colorProductsData,
+        hexcodes: opcionColor.hexcodes ?? null,
       });
       optionsCount += 1;
       if (variantsCount === 0) {
@@ -761,6 +766,7 @@ async function buildBundleOptionsData(product_id) {
       values: opcionColor.valores,
       isColorLinked: true,
       colorProducts: colorProductsData,
+      hexcodes: opcionColor.hexcodes ?? null,
     });
   }
 
