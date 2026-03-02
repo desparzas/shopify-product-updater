@@ -140,10 +140,10 @@ async function getBundleFields(productId) {
     }
 
     let opcionColor = null;
-    const colorNombreMf = metafields.find(m => m.key === 'opcion_color_nombre' && m.namespace === 'custom');
-    const colorEtiquetasMf = metafields.find(m => m.key === 'opcion_color_etiquetas' && m.namespace === 'custom');
-    const colorProductosMf = metafields.find(m => m.key === 'opcion_color_productos' && m.namespace === 'custom');
-    const colorOpcionesNumeroMf = metafields.find(m => m.key === 'opcion_color_opciones_numero' && m.namespace === 'custom');
+    const colorNombreMf = metafields.find(m => m.key === 'numero_color_nombre' && m.namespace === 'custom');
+    const colorEtiquetasMf = metafields.find(m => m.key === 'numero_color_etiquetas' && m.namespace === 'custom');
+    const colorProductosMf = metafields.find(m => m.key === 'numero_color_productos' && m.namespace === 'custom');
+    const colorOpcionesNumeroMf = metafields.find(m => m.key === 'numero_color_parametros' && m.namespace === 'custom');
 
     if (colorNombreMf && colorEtiquetasMf && colorProductosMf && colorOpcionesNumeroMf) {
       const colorProductIds = JSON.parse(colorProductosMf.value)
